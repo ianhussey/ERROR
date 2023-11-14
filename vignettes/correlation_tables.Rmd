@@ -1,0 +1,292 @@
+---
+title: "Examine correlation tables for error and (re)run regression analyses using them"
+author: "Ian Hussey"
+output:
+  html_document:
+    code_folding: hide
+    highlight: haddock
+    theme: flatly
+    toc: yes
+    toc_float: yes
+---
+
+```{r include=FALSE}
+
+# formatting options
+# set default chunk options
+knitr::opts_chunk$set(message = FALSE, 
+                      warning = FALSE)
+
+# disable scientific notation
+options(scipen = 999) 
+
+```
+
+```{r}
+
+# dependencies
+library(tidyverse)
+library(lavaan)
+library(janitor)
+library(knitr)
+library(kableExtra)
+library(Matrix)
+
+# load functions
+source("../R/correlation_consistency.R")
+source("../R/positive_definite.R")
+source("../R/examine_eigenvalues.R")
+source("../R/regression_from_correlation_matrix.R")
+source("../R/regression_from_covariance_matrix.R")
+
+```
+
+# Correlations are ... correlated
+
+Imagine that variable X is highly correlated with variable Y (e.g., $r_{xy}$ = .90), and variable X is also highly correlated with variable Z (e.g., $r_{xz}$ = .90). Intuitively, variable Y and variable Z should also be positively correlated - or at least are not uncorrelated or negatively correlated (i.e., $r_{yz}$ should be positive, or has values which are more vs. less plausible). 
+
+# The inequality of correlation coefficients
+
+This is referred to as the "inequality of correlation coefficients". Given two correlations within the same data ($r_{xy}$ and $r_{xz}$), we can mathematically can determine the bounds of the possible values of the third correlation ($r_{yz}$). 
+
+This Github repo contains a function that can calculate these bounds:
+
+```{r}
+
+correlation_consistency(r_XY = .90, r_XZ = .90) |>
+  select(r_YZ_lower_bound, r_YZ_upper_bound) |>
+  kable() |>
+  kable_classic(full_width = FALSE)
+
+```
+
+This function can also assess whether a the reported value of the third correlation does indeed lie within these bounds:
+
+```{r}
+
+correlation_consistency(r_XY = .90, r_XZ = .90, r_YZ = 0.23) |>
+  select(r_YZ, r_YZ_lower_bound, r_YZ_upper_bound, consistent) |>
+  kable() |>
+  kable_classic(full_width = FALSE)
+
+```
+
+This can be useful in detecting errors in published work.
+
+# Positive definiteness
+
+As an extension of this, when there are more than three correlations, those correlations should conform to the abstract property of "positive definiteness", which means that all eigenvalues must be non-negative. Negative eigenvalues, i.e., "non-positive-definiteness", may imply that there is an error in the correlation matrix. 
+
+Given that correlation matrices are often reported in articles, this gives us another tool which to scrutinize results.
+
+## Example 1: An lower triangle correlation matrix
+
+```{r}
+
+# example of a lower triangle matrix without 1s in diagonal (most common way correlation matrices are reported)
+mat1 <- c(-0.85,
+         -0.85,  0.90,
+         -0.78,  0.83,  0.79,
+          0.68, -0.70, -0.71, -0.45,
+         -0.87,  0.78,  0.89,  0.66, -0.71)
+
+check_if_positive_definite(mat1, is_lower_triangle = TRUE, has_diagonal = FALSE)
+
+```
+
+- The matrix is positive-definite, so no potential issues are detected.
+
+## Example 2: An upper triangle correlation matrix with a diagonal
+
+```{r}
+
+# example of an upper triangle matrix with 1s in diagonal
+mat2 <- c(1.00,  0.32,  0.34, -0.09,  0.21,  0.30, 
+                 1.00,  0.45, -0.54,  0.54,  0.64,
+                        1.00, -0.26,  0.32,  0.34, 
+                               1.00, -0.52, -0.49, 
+                                      1.00,  0.50,
+                                             1.00)
+
+check_if_positive_definite(mat2, is_lower_triangle = FALSE, has_diagonal = TRUE)
+
+```
+
+- Again, the matrix is positive-definite, so no potential issues are detected.
+
+## Example 3: A non-positive definite matrix
+
+```{r}
+
+# the same matrix as the above, but one correlation changed so that the matrix is no longer positive-definite.
+mat3 <- c(1.00,  0.32,  0.34, -0.09,  0.21, -0.90, # this top right corner correlation was change drom .30 to -.90
+                 1.00,  0.45, -0.54,  0.54,  0.64,
+                        1.00, -0.26,  0.32,  0.34, 
+                               1.00, -0.52, -0.49, 
+                                      1.00,  0.50,
+                                             1.00)
+
+check_if_positive_definite(mat3, is_lower_triangle = FALSE, has_diagonal = TRUE)
+
+# because this last matrix was not positive definite, it can be useful to examine which variable has negative eigenvalues and therefore might be causing the issue. The more extremely negative the eigenvalue, the more problematic.
+examine_eigenvalues(mat3, is_lower_triangle = TRUE, has_diagonal = FALSE) |>
+  kable() |>
+  kable_classic(full_width = FALSE)
+
+```
+
+- The matrix is *NOT* positive-definite: a potential issue was detected.
+- Inspecting the eigenvalues for suggests the lowest negative values were for the 6th and 7th variables in the matrix (i.e., the 6th and 7th columns), suggesting that there may be an issue with one of the correlations in these columns. Indeed, it was a correlation in the 7th column that we changed to have an issue.
+
+## Limitations of assessments of positive-definiteness
+
+There are many reasons why non-positive-definiteness might occur for legitimate and problematic reasons. For example, if there is missingness in the data the the correlations were run with "pairwise" exclusions (i.e., so that each correlation is calculated from the participants who had data for those two variables, ignoring whether they had missing data for other variables). Other reasons may exist too.
+
+There are also reasons why non-positive-definiteness might not be detected even when there **are** errors in the correlation matrix. Non-positive-definiteness is easier to detect when errors are larger (i.e., the difference between the correct correlation and the reported on are large) or more systematic (i.e., multiple errors), and when there are a greater number of variables in the correlation matrix. 
+
+As such, finding that a given correlation matrix is either positive-definite OR non-positive-definite does not by itself give you concrete evidence that there either are or are not errors. It can provide a reason for further investigation.
+
+# Run regressions using correlation tables as data
+
+Typically, we run regressions on the actual data gathered from participants. It is an under-appreciated fact that you can, in some situations, also run regression analyses using a correlation matrix as the input. The main restriction is that the regression analyses can only employ continuous variables but not categories such as gender.
+
+This can be very useful when scrutinizing an article. Authors often don't share the data itself, or might be more willing to share a correlation matrix on request than they are the data itself. 
+
+It can also be very useful to assess the robustness of analyses. Most obviously, you might be able to reconstruct the reported analyses. Small numerical differences could occur because the reported correlations may be rounded. Or, for example, if you disagreed with authors' choice of covariates, you could assess the robustness of the results to other choices of covariates among the available data. 
+
+## Example using correlation matrix and sample size
+
+This simpler example uses only the sample size (n) and the correlation matrix to calculate standardized regression estimates ($\beta$) and p values. Because the inputs are standardized effect sizes (correlations), the estimates outputted from the regression are also standardized regression coefficients ($\beta$).
+
+Values were extracted from the tables reported in Haller et al. (2022) 'To Help or Not to Help? Prosocial Behavior, Its Association With Well-Being, and Predictors of Prosocial Behavior During the Coronavirus Disease Pandemic'.
+
+### Data extraction from article
+
+```{r}
+
+# data from article
+n <- 9496
+
+name <- c("Prosocial behavior", "Well-being", "Social Support", "Perceived Stress", "Psychological Flexibility", "Positive Affect")
+
+# clean names for easier use in formulas
+name <- janitor::make_clean_names(name)
+
+correlation <- 
+  lavaan::getCov(x = c(
+    1.00,  0.32,  0.34, -0.09,  0.21,  0.30, # Prosocial behavior
+           1.00,  0.45, -0.54,  0.54,  0.64, # Well-being
+                  1.00, -0.26,  0.32,  0.34, # Social Support
+                         1.00, -0.52, -0.49, # Perceived Stress
+                                1.00,  0.50, # Psychological Flexibility
+                                       1.00  # Positive Affect
+  ),
+  lower = FALSE,
+  diagonal = TRUE, 
+  names = name
+  )
+
+extracted_results <-
+  list(
+    n = n,
+    name = name,
+    correlation = correlation
+  )
+
+```
+
+### Fit regression model
+
+```{r}
+
+# fit regression using correlation matrix
+fit <- regression_from_correlation_matrix(
+  model = 'prosocial_behavior ~ perceived_stress + positive_affect + psychological_flexibility + social_support',
+  cor = extracted_results$correlation,
+  n = extracted_results$n
+)
+
+# print results
+fit |>
+  # round variables other than p value for printing
+  mutate(across(c(where(is.numeric), -p), janitor::round_half_up, digits = 2)) |>
+  kable() |>
+  kable_classic(full_width = FALSE)
+
+```
+
+## Example using sample size, correlation matrix, and SDs
+
+This more complex example uses the sample size (n), the correlation matrix, and each variable's SD to back-calculate the unstandardized values (i.e., the variance-covariance matrix). Results include both unstandardized ($B$) and standardized ($\beta$) regression estimates and p values.
+
+### Data extraction from article
+
+```{r}
+
+# data from article
+n <- 9496
+
+name <- c("Prosocial behavior", "Well-being", "Social Support", "Perceived Stress", "Psychological Flexibility", "Positive Affect")
+#mean <- c(               22.80,        48.34,             9.90,              17.10,                       21.80,             28.07) # NB not essential
+sd   <- c(                4.18,        11.38,             2.10,               7.50,                        4.10,              4.60) 
+
+# clean names for easier use in formulas
+name <- janitor::make_clean_names(name)
+
+correlation <- 
+  lavaan::getCov(x = c(
+    1.00,  0.32,  0.34, -0.09,  0.21,  0.30, # Prosocial behavior
+           1.00,  0.45, -0.54,  0.54,  0.64, # Well-being
+                  1.00, -0.26,  0.32,  0.34, # Social Support
+                         1.00, -0.52, -0.49, # Perceived Stress
+                                1.00,  0.50, # Psychological Flexibility
+                                       1.00  # Positive Affect
+  ),
+  lower = FALSE,
+  diagonal = TRUE, 
+  names = name
+  )
+
+# convert correlations and SDs to covariances. 
+variance_covariance <- 
+  lavaan::cor2cov(R = correlation, 
+                  sds = sd)
+
+extracted_results <-
+  list(
+    n = n,
+    name = name,
+    #mean = mean,
+    sd = sd,
+    correlation = correlation,
+    variance_covariance = variance_covariance
+  )
+
+```
+
+### Fit regression model
+
+```{r}
+
+# fit regression using correlation matrix
+fit <- regression_from_covariance_matrix(
+  model = 'prosocial_behavior ~ perceived_stress + positive_affect + psychological_flexibility + social_support',
+  cov = extracted_results$variance_covariance,
+  n = extracted_results$n
+)
+
+# print results
+fit |>
+  # round variables other than p value for printing
+  mutate(across(c(where(is.numeric), -p), janitor::round_half_up, digits = 2)) |>
+  kable() |>
+  kable_classic(full_width = FALSE)
+
+```
+
+
+
+
+
+
+

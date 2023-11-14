@@ -1,0 +1,130 @@
+---
+title: "SPRITE"
+author: "Ian Hussey"
+output:
+  html_document:
+    code_folding: hide
+    highlight: haddock
+    theme: flatly
+    toc: yes
+    toc_float: yes
+---
+
+```{r include=FALSE}
+
+# formatting options
+# set default chunk options
+knitr::opts_chunk$set(message = FALSE, 
+                      warning = FALSE)
+
+# disable scientific notation
+options(scipen = 999) 
+
+```
+
+```{r}
+
+library(tidyverse)
+library(janitor)
+library(rsprite2)
+library(knitr)
+library(kableExtra)
+
+min_decimals <- function(x, digits = 2) {
+  sprintf(paste0("%.", digits, "f"), x)
+}
+
+```
+
+# SPRITE
+
+Note that data is hard coded into the RMarkdown file. It could also be loaded from disk, e.g., from a correctly formatted .csv file (with the headers label, mean, sd, n, and items) to a tibble via readr::read_csv(). 
+
+Note that datasets are only generated using the first row of the summary_statistics dataframe. You can alter the code below to change which row is used.
+
+```{r}
+
+# enter your data here. Here is some example data
+summary_statistics <- 
+  tibble(
+    label = c("age group 1", "age group 2", "age group 2"),
+    mean  = c(31.09,         20.70,         31.92),
+    sd    = c(6.03,          3.40,          4.83),
+    n     = c(23,            23,            29),
+    items = c(1,             1,             1) # number of items in the scale used to measure this variable. For a single item measure like "what is your age?", items = 1. For a multi item scale, e.g., the BDI-II, this would be the number of items (e.g., 21).
+  ) |>
+  # these conversions to character and, below, back to numeric are done because the code is also common to the GRIM and GRIMMER tests, which require character data.
+  mutate(x = as.character(min_decimals(mean)),
+         sd = as.character(min_decimals(sd))) 
+
+# summary statistics to generate data from
+# note that when the summary_statistics data frame has multiple rows, only the first is used. Alter the code here to change this behavior, e.g., from [1] to [2].
+sprite_parameters <- 
+  set_parameters(mean = summary_statistics$mean[1], 
+                 m_prec = 2, # number of decimal place M was reported to
+                 sd = as.numeric(summary_statistics$sd[1]), 
+                 sd_prec = 2, # number of decimal place SD was reported to
+                 n_obs = summary_statistics$n[1],
+                 min_val = 18, # lowest possible value of variable, if applicable. Eg. age could not be less than 18
+                 max_val = 120)  # highest possible value of variable, if applicable. Eg. age unlikely to be above 120
+
+# generate data
+sprite_results <- 
+  find_possible_distributions(sprite_parameters, 
+                              seed = 42, # set seed for random number generator for reproducibility
+                              n_distributions = 100)
+
+```
+
+## Plot type 1
+
+Useful to see the min and max scores that could generate the summary statistics. Harder to interpret multimodality.
+
+```{r}
+
+plot_distributions(sprite_results)
+
+```
+
+## Plot type 2
+
+Useful to diagnose multimodality and other weird distributions, and min/max range, but can obscures the distribution of individual datasets. After all, only one of these datasets is true (if a real dataset did exist, and possibly not within the 100 generated as SPRITE isn't exhaustive).
+
+```{r fig.height=15, fig.width=6}
+
+enframe(sprite_results$distribution) %>%
+  unnest(cols = c(value)) %>%
+  group_by(name) %>%
+  rowid_to_column() %>%
+  ungroup() %>%
+  ggplot(aes(value)) + 
+  geom_histogram(aes(fill = "all", binwidth = 1, position = "identity", boundary = 0)) +
+  scale_fill_manual(values = "#702963") +
+  theme_linedraw() +
+  facet_wrap(~ name, ncol = 6) +
+  theme(legend.position = "none") +
+  xlab("Response") +
+  ggtitle("Some of the possible distributions\nthat conform to the reported N, M, and SD")
+
+```
+
+## Plot type 3
+
+Useful to see individual datasets and their distributions. E.g., if there is good reason to believe the real data should be right skewed (e.g., it is BDI-II data), inspection of individual datasets can help you assess whether this is plausible given these summary statistics.
+
+```{r}
+
+enframe(sprite_results$distribution) %>%
+  unnest(cols = c(value)) %>%
+  group_by(name) %>%
+  rowid_to_column() %>%
+  ungroup() %>%
+  ggplot(aes(value)) + 
+  geom_histogram(aes(group = as.factor(name)), alpha = 0.1, fill = "#702963", binwidth = 1, position = "identity", boundary = 0) +
+  theme_linedraw() +
+  xlab("Response") +
+  ggtitle("Some of the possible distributions\nthat conform to the reported N, M, and SD")
+
+```
+
+

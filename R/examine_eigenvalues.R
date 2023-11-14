@@ -1,0 +1,66 @@
+#' examine_eigenvalues
+#'
+#' Examine the eigenvalues for each variable in a correlation matrix. This function takes a vector as input, the same as positive_definite(), and therefore is most useful for extracting and examining matrices extracted from articles. Negative eigenvalues indicate that variable is contributing to non-positive-definiteness, and may indicate an error of some kind (e.g., reporting of otherwise).
+#'
+#' @param correlation_matrix_as_vector The upper or lower triangle of a correlation matrix, e.g., as reported in an article, formatted as a vector. You can use manual spacing (e.g., linebreaks) to make it appear as the matrix does. 
+#' @param is_lower_triangle If TRUE, the triangle is a lower triangle. If FALSE, it is the upper triangle.
+#' @param has_diagonal Some articles report a diagonal, either a constant (e.g., 1) or in some fields such as I/O psychology the diagonal reports the scale's reliability (correlation with itself, often Cronbach's alpha). 
+#'
+#' @return a data frame with the variable names, eigenvalue, and potential_issue (negative eigenvalues are flagged with "*").
+#' 
+#' @examples
+#' # example 1: a lower triangle positive-definite matrix without 1s in diagonal (most common way correlation matrices are reported)
+#' mat1 <- c(-0.85,
+#'           -0.85,  0.90,
+#'           -0.78,  0.83,  0.79,
+#'            0.68, -0.70, -0.71, -0.45,
+#'           -0.87,  0.78,  0.89,  0.66, -0.71)
+#' 
+#' examine_eigenvalues(mat1, is_lower_triangle = TRUE, has_diagonal = FALSE)
+#' 
+#' 
+#' # example 2: an upper triangle positive-definite matrix with 1s in diagonal
+#' mat2 <- c(1.00,  0.32,  0.34, -0.09,  0.21,  0.30, 
+#'           1.00,  0.45, -0.54,  0.54,  0.64,
+#'           1.00, -0.26,  0.32,  0.34, 
+#'           1.00, -0.52, -0.49, 
+#'           1.00,  0.50,
+#'           1.00)
+#' 
+#' examine_eigenvalues(mat2, is_lower_triangle = FALSE, has_diagonal = TRUE)
+#'
+#'
+#' # the same matrix as the above, but one correlation changed so that the matrix is no longer positive-definite.
+#' mat3 <- c(1.00,  0.32,  0.34, -0.09,  0.21, -0.90, # this top right corner correlation was change drom .30 to -.90
+#'           1.00,  0.45, -0.54,  0.54,  0.64,
+#'           1.00, -0.26,  0.32,  0.34, 
+#'           1.00, -0.52, -0.49, 
+#'           1.00,  0.50,
+#'           1.00)
+#' 
+#' examine_eigenvalues(mat3, is_lower_triangle = FALSE, has_diagonal = TRUE)
+#' 
+#' @export
+examine_eigenvalues <- function(correlation_matrix_as_vector, is_lower_triangle, has_diagonal){
+  
+  require(lavaan)
+  require(dplyr)
+  require(janitor)
+  
+  mat <- 
+    lavaan::getCov(x = correlation_matrix_as_vector,
+                   lower = is_lower_triangle,
+                   diagonal = has_diagonal) 
+  
+  res <- 
+    data.frame(variable = colnames(mat),
+               eigenvalue = eigen(mat)$values) |>
+    mutate(potential_issue = ifelse(eigenvalue < 0, "*", ""),
+           eigenvalue = round_half_up(eigenvalue, 3))
+  
+  return(res)
+}
+
+
+
+

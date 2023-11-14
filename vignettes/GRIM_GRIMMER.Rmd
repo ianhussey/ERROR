@@ -1,0 +1,89 @@
+---
+title: "GRIM & GRIMMER"
+author: "Ian Hussey"
+output:
+  html_document:
+    code_folding: hide
+    highlight: haddock
+    theme: flatly
+    toc: yes
+    toc_float: yes
+---
+
+```{r include=FALSE}
+
+# formatting options
+# set default chunk options
+knitr::opts_chunk$set(message = FALSE, 
+                      warning = FALSE)
+
+# disable scientific notation
+options(scipen = 999) 
+
+```
+
+```{r}
+
+library(tidyverse)
+library(scrutiny)
+library(rsprite2)
+library(knitr)
+library(kableExtra)
+
+min_decimals <- function(x, digits = 2) {
+  sprintf(paste0("%.", digits, "f"), x)
+}
+
+```
+
+# GRIM
+
+Note that data is hard coded into the RMarkdown file. It could also be loaded from disk, e.g., from a correctly formatted .csv file (with the headers label, mean, sd, n, and items) to a tibble via readr::read_csv(). Note that the columns mean and sd must be converted to character after load. 
+
+```{r}
+
+# enter your data here. Here is some example data
+summary_statistics <- 
+  tibble(
+    label = c("age group 1", "age group 2", "age group 2"),
+    mean  = c(31.09,         20.70,         31.92),
+    sd    = c(6.03,          3.40,          4.83),
+    n     = c(23,            23,            29),
+    items = c(1,             1,             1) # number of items in the scale use to measure this variable. For a single item measure like "what is your age?", items = 1
+  ) |>
+  mutate(x = as.character(min_decimals(mean)),
+         sd = as.character(min_decimals(sd))) 
+
+# apply GRIM test
+grim_results <- 
+  summary_statistics |>
+  grim_map() 
+
+# print table
+grim_results |>
+  select(label, mean, sd, n, consistency) |>
+  knitr::kable() |>
+  kableExtra::kable_classic(full_width = FALSE)
+
+# plot
+grim_results |>
+  grim_plot()
+
+```
+
+# GRIMMER
+
+```{r}
+
+# apply GRIMMER test using same extracted results
+grimmer_map(data = summary_statistics, 
+            items = summary_statistics$items, 
+            rounding = "up_or_down") |>
+  rename(mean = x) |>
+  # print table
+  knitr::kable() |>
+  kableExtra::kable_classic(full_width = FALSE)
+
+```
+
+

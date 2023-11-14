@@ -1,0 +1,58 @@
+---
+title: "Statcheck"
+author: "Ian Hussey"
+output:
+  html_document:
+    code_folding: hide
+    highlight: haddock
+    theme: flatly
+    toc: yes
+    toc_float: yes
+---
+
+```{r include=FALSE}
+
+# formatting options
+# set default chunk options
+knitr::opts_chunk$set(message = FALSE, 
+                      warning = FALSE)
+
+# disable scientific notation
+options(scipen = 999) 
+
+```
+
+```{r}
+
+library(tidyverse)
+library(metafor)
+library(janitor)
+library(statcheck)
+library(knitr)
+library(kableExtra)
+
+min_decimals <- function(x, digits = 2) {
+  sprintf(paste0("%.", digits, "f"), x)
+}
+
+```
+
+# Statcheck
+
+```{r}
+
+# results to be statchecked
+results_for_statcheck <- 
+  tibble(label = c("t test comparing mean age between groups"),
+         printed_result = c("t(58) = 2.46, p = 0.59"))
+
+# apply statcheck
+statcheck(results_for_statcheck, messages = FALSE) |>
+  select(raw, computed_p, error, decision_error) |>
+  # print table
+  kable() |>
+  kableExtra::kable_classic(full_width = FALSE)
+
+```
+
+

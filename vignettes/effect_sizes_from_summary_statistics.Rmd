@@ -1,0 +1,101 @@
+---
+title: "Recalculate Standardized Mean Difference effect sizes from summary statistics (M, SD, and N)"
+author: "Ian Hussey"
+output:
+  html_document:
+    code_folding: hide
+    highlight: haddock
+    theme: flatly
+    toc: yes
+    toc_float: yes
+---
+
+```{r include=FALSE}
+
+# formatting options
+# set default chunk options
+knitr::opts_chunk$set(message = FALSE, 
+                      warning = FALSE)
+
+# disable scientific notation
+options(scipen = 999) 
+
+```
+
+```{r}
+
+library(tidyverse)
+library(metafor)
+library(janitor)
+library(knitr)
+library(kableExtra)
+
+```
+
+# Standardized Mean Difference effect sizes
+
+Recalculate Cohen's d values from M, SD, and N. Calculates Standardized Mean Differences with small sample size corrections (Hedges' g) and without this correction (Cohen's d). Some articles apply a Hedges' correction and some don't. Not all articles report applying it, so it's safer to calculate both. Hedges' g should be used in meta-analyses over Cohen's d.
+
+Note that data is hard coded into the RMarkdown file. It could also be loaded from disk, e.g., from a correctly formatted .csv file (with the headers label, m1, m2, sd1, sd2, n1, and n2) to a tibble via readr::read_csv(). 
+
+Note that this function only calculates between groups SMD effect sizes, not any variant such as one sample or within-subject effect sizes. Also note that there are many small variations on this implementation of Cohen's d (and therefore Hedges' g), such as differences in how the variance should be calculated. As such, this is not an exhaustive check against all the variations in formulae that authors may have employed to calculate their scores. Nonetheless, large variations between what is calculated here and what is reported in a manuscript may indicate lack of computational reproducibility or the presence of errors. 
+
+Note that meta analyses often report weightings in their forest plots too. Most often, modern meta-analyses weight by inverse variance. Older meta analyses may weight by sample size. This may provide one more verifiable step that can be scrutinised: are the weightings calculable from the calculated variances. 
+
+```{r}
+
+# code extracted from metafor::escalc but does not apply Hedges' g correction as escalc does
+# this code also drops a lot of checks that escalc() includes - it is bare bones
+cohens_d <- function(dat){
+  res <- dat |>
+    mutate(m = (n1 + n2) - 2,
+           sdp = sqrt(((n1 - 1) * sd1^2 + (n2 - 1) * sd2^2)/m),
+           y = (m1 - m2)/sdp,
+           v = 1/n1 + 1/n2 + y^2/(2 * (n1 + n2))) |>
+    select(cohens_d = y, cohens_d_variance = v)
+  return(res)
+}
+
+
+# means, SDs, and Ns extracted from your article. Here is some example data.
+# Note that data is hard coded into the RMarkdown file. It could also be loaded from disk, e.g., from a correctly formatted .csv file (with the headers label, m1, m2, sd1, sd2, n1, and n2) to a tibble via readr::read_csv(). 
+summary_statistics_for_effect_sizes <- 
+  tibble(
+    label = c("study 1", "study 2", "study 3"),
+    n1    = c(28,     28,   32),
+    m1    = c(13.1, 14.1, 15.4),
+    sd1   = c(3.4,   2.6,  4.5),
+    n2    = c(29,     26,   30),
+    m2    = c(12.1, 13.4, 14.2),
+    sd2   = c(3.6,   2.3,  4.4)
+  )
+
+effect_sizes <- 
+  bind_cols(
+    escalc(data = summary_statistics_for_effect_sizes, 
+           measure = "SMD",
+           n1i  = n1,
+           m1i  = m1,
+           sd1i = sd1,
+           n2i  = n2,
+           m2i  = m2,
+           sd2i = sd2) |>
+      rename(hedges_g = yi,
+             hedges_g_variance = vi) |>
+      mutate(hedges_g_ci_lower = hedges_g - (1.96 * sqrt(hedges_g_variance)),
+             hedges_g_ci_upper = hedges_g + (1.96 * sqrt(hedges_g_variance))),
+    summary_statistics_for_effect_sizes |>
+      cohens_d() |>
+      mutate(cohens_d_ci_lower = cohens_d - (1.96 * sqrt(cohens_d_variance)),
+             cohens_d_ci_upper = cohens_d + (1.96 * sqrt(cohens_d_variance)))
+  )
+
+effect_sizes |>
+  mutate_if(is.numeric, round_half_up, digits = 2) |>
+  knitr::kable() |>
+  kableExtra::kable_classic(full_width = FALSE)
+
+```
+
+
+

@@ -1,0 +1,74 @@
+---
+title: "2-way between subjects ANOVA from summary statistics"
+author: "Ian Hussey"
+output:
+  html_document:
+    code_folding: hide
+    highlight: haddock
+    theme: flatly
+    toc: yes
+    toc_float: yes
+---
+
+```{r include=FALSE}
+
+# formatting options
+# set default chunk options
+knitr::opts_chunk$set(message = FALSE, 
+                      warning = FALSE)
+
+# disable scientific notation
+options(scipen = 999) 
+
+```
+
+```{r}
+
+# dependencies
+library(dplyr)
+library(knitr)
+library(kableExtra)
+
+source("../R/anova_from_summary_stats.R")
+
+```
+
+# 2-way between subjects ANOVA from summary statistics 
+
+Summary stats are typically rounded for reporting. Recomputed ANOVA results may therefore be inaccurate. We work around this by recomputing F values for the reported summary stats, and also the min and max F values for summary stats that could be rounded to the reported values. P values and partial eta squared ($\eta_p^2$) effect size and its 90% confidence intervals are then computed from those F values. Note that by default 90% CIs are computed rather than 95% CIs because partial eta2 is always positive (see [Laken's blog on this topic](https://daniellakens.blogspot.com/2014/06/calculating-confidence-intervals-for.html)). 
+
+```{r}
+
+# labels for the experimental groups and interaction
+labels <- c("groups 1 (A vs B)", "groups 2 (C vs D)", "groups 1 x groups 2 interaction")
+
+# extracted data - must be formatted as matrices
+m <- matrix(c(5.00, 2.69,
+              4.83, 5.54),
+            ncol = 2)
+
+sd <- matrix(c(2.99, 2.57,
+               2.71, 1.84),
+             ncol = 2)
+
+n <- matrix(c(40, 20,
+              35, 10),
+            ncol = 2)
+
+# fit anova from summary stats
+res <- anova_from_summary_stats(m      = m,
+                                sd     = sd,
+                                n      = n,
+                                labels = labels)
+
+# print results
+res |>
+  mutate(p = round_half_up_to_char(p, digits = 5)) |>
+  mutate_if(is.numeric, janitor::round_half_up, digits = 3) |>
+  knitr::kable() |>
+  kableExtra::kable_classic(full_width = FALSE)
+
+```
+
+
+
