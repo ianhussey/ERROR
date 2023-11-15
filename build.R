@@ -6,6 +6,8 @@ library(roxygen2)
 setwd("~/git/ERROR")
 devtools::document()
 
+devtools::build_vignettes()
+
 devtools::check()
 
 #devtools::install()
