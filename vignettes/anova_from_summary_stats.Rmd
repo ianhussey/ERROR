@@ -1,13 +1,12 @@
 ---
 title: "2-way between subjects ANOVA from summary statistics"
 author: "Ian Hussey"
-output:
-  html_document:
-    code_folding: hide
-    highlight: haddock
-    theme: flatly
-    toc: yes
-    toc_float: yes
+output: 
+  rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{2-way between subjects ANOVA from summary statistics}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
 ---
 
 ```{r include=FALSE}

@@ -1,13 +1,12 @@
 ---
 title: "Recalculate Standardized Mean Difference effect sizes from summary statistics (M, SD, and N)"
 author: "Ian Hussey"
-output:
-  html_document:
-    code_folding: hide
-    highlight: haddock
-    theme: flatly
-    toc: yes
-    toc_float: yes
+output: 
+  rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Recalculate Standardized Mean Difference effect sizes from summary statistics (M, SD, and N)}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
 ---
 
 ```{r include=FALSE}

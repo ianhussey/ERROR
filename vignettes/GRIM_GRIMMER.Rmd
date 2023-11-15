@@ -1,13 +1,12 @@
 ---
 title: "GRIM & GRIMMER"
 author: "Ian Hussey"
-output:
-  html_document:
-    code_folding: hide
-    highlight: haddock
-    theme: flatly
-    toc: yes
-    toc_float: yes
+output: 
+  rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{GRIM & GRIMMER}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
 ---
 
 ```{r include=FALSE}
