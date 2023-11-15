@@ -80,10 +80,10 @@ Given that correlation matrices are often reported in articles, this gives us an
 
 # example of a lower triangle matrix without 1s in diagonal (most common way correlation matrices are reported)
 mat1 <- c(-0.85,
-         -0.85,  0.90,
-         -0.78,  0.83,  0.79,
-          0.68, -0.70, -0.71, -0.45,
-         -0.87,  0.78,  0.89,  0.66, -0.71)
+          -0.85,  0.90,
+          -0.78,  0.83,  0.79,
+           0.68, -0.70, -0.71, -0.45,
+          -0.87,  0.78,  0.89,  0.66, -0.71)
 
 check_if_positive_definite(mat1, is_lower_triangle = TRUE, has_diagonal = FALSE)
 
@@ -261,6 +261,10 @@ extracted_results <-
 
 ### Fit regression model
 
+#### Similar model to that used in the article
+
+Excluding the demographics variables, which aren't available in their correlation table.
+
 ```{r}
 
 # fit regression using correlation matrix
@@ -272,6 +276,113 @@ fit <- regression_from_covariance_matrix(
 
 # print results
 fit |>
+  # round variables other than p value for printing
+  mutate(across(c(where(is.numeric), -p), janitor::round_half_up, digits = 2)) |>
+  kable() |>
+  kable_classic(full_width = FALSE)
+
+```
+
+#### Change covariates between models
+
+```{r}
+
+res <- 
+  bind_rows(
+    regression_from_covariance_matrix(
+      model = 'prosocial_behavior ~ psychological_flexibility',
+      cov = extracted_results$variance_covariance,
+      n = extracted_results$n
+    ) |>
+      mutate(IVs = "PF") |>
+      filter(predictor == "psychological_flexibility") |>
+      select(IVs, B, B_ci_lower, B_ci_upper) |>
+      as_tibble(),
+    
+    regression_from_covariance_matrix(
+      model = 'prosocial_behavior ~ psychological_flexibility + perceived_stress',
+      cov = extracted_results$variance_covariance,
+      n = extracted_results$n
+    ) |>
+      mutate(IVs = "PF, stress") |>
+      filter(predictor == "psychological_flexibility") |>
+      select(IVs, B, B_ci_lower, B_ci_upper) |>
+      as_tibble(),
+    
+    regression_from_covariance_matrix(
+      model = 'prosocial_behavior ~ psychological_flexibility + perceived_stress + social_support',
+      cov = extracted_results$variance_covariance,
+      n = extracted_results$n
+    ) |>
+      mutate(IVs = "PF, stress, social support") |>
+      filter(predictor == "psychological_flexibility") |>
+      select(IVs, B, B_ci_lower, B_ci_upper) |>
+      as_tibble(),
+    
+    regression_from_covariance_matrix(
+      model = 'prosocial_behavior ~ psychological_flexibility + perceived_stress + social_support + positive_affect',
+      cov = extracted_results$variance_covariance,
+      n = extracted_results$n
+    ) |>
+      mutate(IVs = "PF, stress, social support, pos affect") |>
+      filter(predictor == "psychological_flexibility") |>
+      select(IVs, B, B_ci_lower, B_ci_upper) |>
+      as_tibble()
+  )
+
+ggplot(res, aes(B, IVs)) +
+  geom_vline(xintercept = 0, linetype = "dotted") +
+  ggstance::geom_linerangeh(aes(xmin = B_ci_lower, xmax = B_ci_upper)) +
+  geom_point() +
+  theme_linedraw()
+
+```
+
+#### Change DV
+
+Sometimes, authors fit a model with clear causal implications but resist stating explicitly that they are trying to talk about causality. One intuition pump in such cases is to reformulate their model: if they are truly agnostic to whether X causes Y or Y causes X, fit the opposite model and ask them if its still acceptable. If not, why? Usually, it comes down to subtle causal assumptions.
+
+E.g., original model implies prosocial behavior is caused by positive affect: prosocial_behavior ~ positive_affect, controlling for other variables (psychological_flexibility, perceived_stress, social_support)
+
+```{r}
+
+# fit regression using correlation matrix
+fit <- regression_from_covariance_matrix(
+  model = 'prosocial_behavior ~ positive_affect + psychological_flexibility + perceived_stress + social_support',
+  cov = extracted_results$variance_covariance,
+  n = extracted_results$n
+) |>
+  mutate(DV = "prosocial_behavior") |>
+  select(DV, predictor, B, B_ci_lower, B_ci_upper, p) 
+
+# print results
+fit |>
+  filter(predictor == "positive_affect") |>
+  # round variables other than p value for printing
+  mutate(across(c(where(is.numeric), -p), janitor::round_half_up, digits = 2)) |>
+  kable() |>
+  kable_classic(full_width = FALSE)
+
+```
+
+Reformulated model is that positive affect is caused by prosocial behavior: positive_affect ~ prosocial_behavior, controlling for other variables (psychological_flexibility, perceived_stress, social_support).
+
+Both models provide significant p values, so which is right? The answer is that the p values can't tell you whether the model specification is right. Getting the model specification right requires deeper theoretical understanding and causal justification (see [Wysocki et al., 2022](https://journals.sagepub.com/doi/10.1177/25152459221095823)).
+
+```{r}
+
+# fit regression using correlation matrix
+fit <- regression_from_covariance_matrix(
+  model = 'positive_affect ~ prosocial_behavior + psychological_flexibility + perceived_stress + social_support',
+  cov = extracted_results$variance_covariance,
+  n = extracted_results$n
+) |>
+  mutate(DV = "prosocial_behavior") |>
+  select(DV, predictor, B, B_ci_lower, B_ci_upper, p) 
+
+# print results
+fit |>
+  filter(predictor == "prosocial_behavior") |>
   # round variables other than p value for printing
   mutate(across(c(where(is.numeric), -p), janitor::round_half_up, digits = 2)) |>
   kable() |>
