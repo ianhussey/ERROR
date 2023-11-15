@@ -1,16 +1,28 @@
 # ERROR
 
-This is a collection of tools for scrutinising the results of articles and preprints. References and web apps are provided for each below. Working examples are provided for each in the `vignettes` directory.
-
-
+This R package contains a collection of tools for scrutinising the results of articles and preprints to detect errors. References and web apps are provided for each below. Working examples are provided for each in the vignettes.
 
 [TOC]
 
 
 
+## Usage
+
+Install the package directly from GitHub, then view the vignettes in RStudio.
+
+1. Run the following code:
+
+```R
+devtools::install_github("ianhussey/ERROR")
+library(ERROR)
+?ERROR
+```
+
+2. Click "Index" and then "User guides, package vignettes and other documentation." to view a list of all vignettes.
+
+
+
 ## Included tools
-
-
 
 ### Statcheck
 
