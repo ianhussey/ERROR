@@ -25,3 +25,4 @@ Suggests:
     roxygen2
 License: use_mit_license()
 VignetteBuilder: knitr
+BuildVignettes: true
