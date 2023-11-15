@@ -12,7 +12,7 @@
 <meta name="author" content="Ian Hussey" />
 
 
-<title>Examine correlation tables for error and (re)run regression analyses using them</title>
+<title>Examine correlation tables for errors and (re)run regression analyses using them</title>
 
 <script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
 // be compatible with the behavior of Pandoc < 2.8).
@@ -1884,7 +1884,7 @@ border-radius: 0px;
 
 
 
-<h1 class="title toc-ignore">Examine correlation tables for error and
+<h1 class="title toc-ignore">Examine correlation tables for errors and
 (re)run regression analyses using them</h1>
 <h4 class="author">Ian Hussey</h4>
 
@@ -1898,13 +1898,9 @@ border-radius: 0px;
 <span id="cb1-5"><a href="#cb1-5" tabindex="-1"></a><span class="fu">library</span>(knitr)</span>
 <span id="cb1-6"><a href="#cb1-6" tabindex="-1"></a><span class="fu">library</span>(kableExtra)</span>
 <span id="cb1-7"><a href="#cb1-7" tabindex="-1"></a><span class="fu">library</span>(Matrix)</span>
-<span id="cb1-8"><a href="#cb1-8" tabindex="-1"></a></span>
-<span id="cb1-9"><a href="#cb1-9" tabindex="-1"></a><span class="co"># load functions</span></span>
-<span id="cb1-10"><a href="#cb1-10" tabindex="-1"></a><span class="fu">source</span>(<span class="st">&quot;../R/correlation_consistency.R&quot;</span>)</span>
-<span id="cb1-11"><a href="#cb1-11" tabindex="-1"></a><span class="fu">source</span>(<span class="st">&quot;../R/positive_definite.R&quot;</span>)</span>
-<span id="cb1-12"><a href="#cb1-12" tabindex="-1"></a><span class="fu">source</span>(<span class="st">&quot;../R/examine_eigenvalues.R&quot;</span>)</span>
-<span id="cb1-13"><a href="#cb1-13" tabindex="-1"></a><span class="fu">source</span>(<span class="st">&quot;../R/regression_from_correlation_matrix.R&quot;</span>)</span>
-<span id="cb1-14"><a href="#cb1-14" tabindex="-1"></a><span class="fu">source</span>(<span class="st">&quot;../R/regression_from_covariance_matrix.R&quot;</span>)</span></code></pre></div>
+<span id="cb1-8"><a href="#cb1-8" tabindex="-1"></a><span class="co"># library(devtools)</span></span>
+<span id="cb1-9"><a href="#cb1-9" tabindex="-1"></a><span class="co"># install_github(&quot;ianhussey/ERROR&quot;)</span></span>
+<span id="cb1-10"><a href="#cb1-10" tabindex="-1"></a><span class="fu">library</span>(ERROR)</span></code></pre></div>
 <div id="correlations-are-correlated" class="section level1">
 <h1>Correlations are … correlated</h1>
 <p>Imagine that variable X is highly correlated with variable Y (e.g.,

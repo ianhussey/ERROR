@@ -1,5 +1,5 @@
 ---
-title: "Examine correlation tables for error and (re)run regression analyses using them"
+title: "Examine correlation tables for errors and (re)run regression analyses using them"
 author: "Ian Hussey"
 output:
   html_document:
@@ -31,13 +31,9 @@ library(janitor)
 library(knitr)
 library(kableExtra)
 library(Matrix)
-
-# load functions
-source("../R/correlation_consistency.R")
-source("../R/positive_definite.R")
-source("../R/examine_eigenvalues.R")
-source("../R/regression_from_correlation_matrix.R")
-source("../R/regression_from_covariance_matrix.R")
+# library(devtools)
+# install_github("ianhussey/ERROR")
+library(ERROR)
 
 ```
 
