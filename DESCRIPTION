@@ -17,7 +17,8 @@ Imports:
     scrutiny,
     rsprite2,
     metafor,
-    statcheck
+    statcheck,
+    ggstance
 Suggests:
     knitr,
     kableExtra,
