@@ -20,13 +20,11 @@ library(ERROR)
 
 2. Click "Index" and then "User guides, package vignettes and other documentation." to view a list of all vignettes.
 
-
-
 ## Included tools
 
 ### Statcheck
 
-For assessing whether reported test statistics, degrees of freedom, and *p* values are mathmathically congruent with one another, and therefore useful for detecting reporting errors.  
+For assessing whether reported test statistics, degrees of freedom, and *p* values are mathematically congruent with one another, and therefore useful for detecting reporting errors.  
 
 #### Webapp
 
@@ -36,6 +34,13 @@ For assessing whether reported test statistics, degrees of freedom, and *p* valu
 
 [statcheck](https://cran.r-project.org/web/packages/statcheck/)
 
+#### Documentation/Tutorial
+
+Difficulty: easy
+Details: comprehensive
+
+[statcheck](https://rpubs.com/michelenuijten/statcheckmanual)
+
 #### References
 
 Nuijten, M. B., & Polanin, J. R. (2020) “statcheck”: Automatically detect statistical reporting inconsistencies to increase reproducibility of meta-analyses. *Research Synthesis Methods.* https://doi.org/10.1002/jrsm.1408 [pdf on ilias]
@@ -44,9 +49,9 @@ Nuijten, M. B., Hartgerink, C. H., Van Assen, M. A., Epskamp, S., & Wicherts, J.
 
 
 
-### GRIM & GRIMMER
+### GRIM, GRIMMER & DEBIT
 
-For assessing whether reported means and standard deviations (and indeed standard errors and variances) are mathmathically possible, and therefore useful for detecting reporting errors.  
+For assessing whether reported means and standard deviations (and indeed standard errors and variances) are mathematically possible for granular/discrete or binary data, and therefore useful for detecting reporting errors.  
 
 #### Webapp
 
@@ -54,9 +59,22 @@ GRIM (means) http://www.prepubmed.org/general_grim/
 
 GRIMMER (SDs, SEs, or variance) http://www.prepubmed.org/grimmer/ 
 
+DEBIT (binary data) ?
+
 #### R package
 
 [scrutiny](https://cran.r-project.org/web/packages/scrutiny)
+
+#### Documentation/Tutorial
+
+Difficulty: easy to medium
+Details: comprehensive
+
+[GRIM](https://lhdjung.github.io/scrutiny/articles/grim.html)
+
+[GRIMMER](https://lhdjung.github.io/scrutiny/articles/grimmer.html)
+
+[DEBIT](https://lhdjung.github.io/scrutiny/articles/debit.html)
 
 #### References
 
@@ -82,6 +100,13 @@ https://steamtraen.shinyapps.io/rsprite/
 
 possibly also [scrutiny](https://cran.r-project.org/web/packages/scrutiny)?
 
+#### Documentation/Tutorial
+
+Difficulty: easy
+Details: scarce
+
+[rsprite2](https://lukaswallrich.github.io/rsprite2/)
+
 #### References
 
 Heathers, J. A., Anaya, J., van der Zee, T., Brown, N. J. L. (2018). Recovering data from summary statistics: Sample Parameter Reconstruction via Iterative TEchniques (SPRITE). PeerJ. https://doi.org/10.7287/peerj.preprints.26968v1
@@ -106,9 +131,15 @@ NA
 
 [under construction]
 
+#### Documentation/Tutorial
+
+[under construction]
+
 
 
 ## Tools to be added
+
+
 
 ### *p*-curve
 
@@ -121,6 +152,12 @@ https://www.p-curve.com/app4/
 #### R package
 
 [dmetar](https://dmetar.protectlab.org/) (see Harrer chapter below)
+
+#### Documentation/Tutorial
+
+Difficulty: medium
+Details: comprehensive
+[dmetar](https://dmetar.protectlab.org/articles/dmetar)
 
 #### References
 
@@ -146,6 +183,13 @@ https://shinyapps.org/apps/p-checker/ (see the Excess Significance tab, although
 
 [zcurve](https://cran.r-project.org/web/packages/zcurve/index.html)
 
+#### Documentation/Tutorial
+
+Difficulty: medium
+Details: average (explain how to use the package, not how to interpret results)
+
+[zcurve](https://fbartos.github.io/zcurve/)
+
 #### References
 
 Bartoš, F., & Schimmack, U. (2022) Z-curve 2.0: Estimating Replication Rates and Discovery Rates. *Meta-psychology*, 6. https://doi.org/10.15626/MP.2021.2720 
@@ -166,25 +210,13 @@ https://automeris.io/WebPlotDigitizer/ (also has local apps for Windows, Mac OS 
 
 #### References
 
-See website for tutorials: https://automeris.io/WebPlotDigitizer/tutorial.html
+#### Documentation/Tutorials
 
+Difficulty: ?
+Details: comprehensive
 
-
-### DEBIT
-
-A Simple Consistency Test For Binary Data
-
-#### Webapp
-
-[to be added]
-
-#### R package
-
-[scrutiny](https://cran.r-project.org/web/packages/scrutiny)
-
-#### References
-
-Heathers & Brown (2019) DEBIT: A Simple Consistency Test For Binary Data. https://osf.io/5vb3u
+[manual](https://automeris.io/WebPlotDigitizer/userManual.pdf)
+[videos](https://automeris.io/WebPlotDigitizer/tutorial.html)
 
 
 
@@ -197,6 +229,10 @@ Rounded Input Variables, Exact Test Statistics: A Technique For Detecting Hand-C
 [to be added]
 
 #### R package
+
+[to be added]
+
+#### Documentation/Tutorials
 
 [to be added]
 
@@ -222,7 +258,6 @@ Check correlation tables for consistency and (re)create regression analyses usin
 
 [under construction]
 
+#### Documentation/Tutorials
 
-
-
-
+[under construction]
