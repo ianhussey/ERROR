@@ -157,7 +157,7 @@ https://www.p-curve.com/app4/
 
 Difficulty: medium
 Details: comprehensive
-[dmetar](https://dmetar.protectlab.org/articles/dmetar)
+[dmetar](https://bookdown.org/MathiasHarrer/Doing_Meta_Analysis_in_R/pub-bias.html#addressing-pubbias)
 
 #### References
 
