@@ -43,7 +43,7 @@ min_decimals <- function(x, digits = 2) {
 # results to be statchecked
 results_for_statcheck <- 
   tibble(label = c("t test comparing mean age between groups"),
-         printed_result = c("t(58) = 2.46, p = 0.59"))
+         printed_result = c("t(58) = 1.46, p = 0.03"))
 
 # apply statcheck
 statcheck(results_for_statcheck, messages = FALSE) |>
