@@ -1,7 +1,7 @@
 
 #################
 # Compute 1-way or 2-way ANOVA from summary statistics (M, SD, N)
-# code adapted from rpsychi R package (v0.8, no longer on CRAN due to lack of maintainance)
+# code adapted from rpsychi R package (v0.8, no longer on CRAN due to lack of maintenance)
 # and Nick Brown's f_range() function (https://steamtraen.blogspot.com/2018/01/) which adapts functions from the rpsychi to deal with rounding issues. 
 # Nick's code relies on rpsychi, and no longer runs due to changes to R over time.
 # This code gathers the necessary functions in one place, fixes issues that arose due to R updates, 
