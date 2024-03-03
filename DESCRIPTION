@@ -5,6 +5,7 @@ Authors@R:
     person("Ian", "Hussey", , "Ian.hussey@unibe.ch", role = c("aut", "cre"),
            comment = c(ORCID = "0000-0001-8906-7559"))
 Description: Scrutinize the results of articles by inspecting and reconstructing results and analyses.
+License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.2.3
@@ -24,6 +25,5 @@ Suggests:
     kableExtra,
     devtools,
     roxygen2
-License: use_mit_license()
 VignetteBuilder: knitr
 BuildVignettes: true
