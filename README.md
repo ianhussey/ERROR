@@ -224,5 +224,13 @@ Check correlation tables for consistency and (re)create regression analyses usin
 
 
 
+### Correlation disattenuation checker
+
+Given the observed reliability of two measures, is the correlation among them plausible? What would the true correlation between them have to be when disattentuated?
+
+What if we disattentuated the curve of observed correlations in metabus for different levels of reliablity to observe the potential distribution of true correlations? Ask frank about whether he has disattentuated correlations using alphas. 
+
+
+
 
 
