@@ -19,7 +19,11 @@ Imports:
     rsprite2,
     metafor,
     statcheck,
-    ggstance
+    ggstance,
+    dmetar,
+    meta
+Remotes:
+    MathiasHarrer/dmetar
 Suggests:
     knitr,
     kableExtra,
