@@ -1,0 +1,94 @@
+---
+title: "Reliability"
+author: "Ian Hussey"
+output: 
+  rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{reliability}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r include=FALSE}
+
+# formatting options
+# set default chunk options
+knitr::opts_chunk$set(message = FALSE, 
+                      warning = FALSE)
+
+# disable scientific notation
+options(scipen = 999) 
+
+```
+
+```{r}
+
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+
+min_decimals <- function(x, digits = 2) {
+  sprintf(paste0("%.", digits, "f"), x)
+}
+
+```
+
+# Correlation disattentuation
+
+```{r}
+
+# formula
+disattentuate <- function(r_xy, r_xx, r_yy){
+  r_xy_disattentuated <- r_xy / sqrt(r_xx * r_yy)
+  return(r_xy_disattentuated)
+}
+
+disattentuate(r_xy = .45, r_xx = .27, r_yy = .70)
+
+
+
+# overall d score reliability 
+data.frame(r_xx = c(.50, .60, .70, .80, .90)) |>
+  mutate(
+    r_xy = .45, # vahey
+    r_yy = .49 # new meta
+    ) |>
+  rowwise() |>
+  mutate(r_xy_disattentuated = map_dbl(r_xx, disattentuate, r_xy = r_xy, r_yy = r_yy)) |>
+  mutate(r_xy_disattentuated = janitor::round_half_up(r_xy_disattentuated, 2)) |>
+  select(r_xx, r_yy, r_xy, r_xy_disattentuated)
+
+# tt level reliability
+data.frame(r_xx = c(.50, .60, .70, .80, .90)) |>
+  mutate(
+    r_xy = .45, # vahey
+    r_yy = .27 # new meta
+    ) |>
+  rowwise() |>
+  mutate(r_xy_disattentuated = map_dbl(r_xx, disattentuate, r_xy = r_xy, r_yy = r_yy)) |>
+  mutate(r_xy_disattentuated = janitor::round_half_up(r_xy_disattentuated, 2)) |>
+  select(r_xx, r_yy, r_xy, r_xy_disattentuated)
+
+```
+
+note these r_xy_disattentuated are *averages* across studies! Individual studies would need to be higher.
+
+
+
+```{r}
+# psych::correct.cor(x, y)
+#x: A raw correlation matrix
+#y: Vector of reliabilities
+
+# from the psyc::correct.cor documntation:
+#However, to do the more general case of correcting correlations for reliabilty
+#corrected <- cor2cov(x.cor,1/alpha)
+#diag(corrected) <- 1
+
+
+# psychmeta may also have functions
+
+
+```
+
+
