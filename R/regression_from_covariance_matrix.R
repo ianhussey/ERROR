@@ -1,6 +1,6 @@
 #' regression_from_covariance_matrix
 #'
-#' Fit a univeriable or multivariable regression using a covariance matrix as an input rather than the data itself. Note that only continuous variables can be used.  
+#' Fit a univariate or multivariable regression using a covariance matrix as an input rather than the data itself. Note that only continuous variables can be used.  
 #'
 #' @param model lavaan/Wilkinson notation for the regression model, e.g., Y ~ X1 + X2
 #' @param cov A covariance matrix. See examples for how to convert a correlation matrix and standard deviations into a covariance matrix.
