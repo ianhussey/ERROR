@@ -232,5 +232,17 @@ What if we disattentuated the curve of observed correlations in metabus for diff
 
 
 
+### Likelihood ratio for mixed results among multiple studies
+
+https://shiny.ieis.tue.nl/mixed_results_likelihood/
+
+https://lakens.github.io/statistical_inferences/03-likelihoods.html#sec-mixedresults
+
+https://link.springer.com/article/10.3758/s13423-014-0601-x
+
+
+
+
+
 
 

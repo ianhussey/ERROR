@@ -1,0 +1,2043 @@
+---
+title: "Assess whether correlation tables are internally consistent, and reconstruct regression analyses from correlation matrices"
+author: "Ian Hussey"
+output:
+  html_document:
+    code_folding: hide
+    highlight: haddock
+    theme: flatly
+    toc: yes
+    toc_float: yes
+---
+
+IN DEVELOPMENT - NOT RECOMMENDED FOR USE
+ 
+```{r include=FALSE}
+
+# formatting options
+# set default chunk options
+knitr::opts_chunk$set(message = FALSE, 
+                      warning = FALSE)
+
+# disable scientific notation
+options(scipen = 999) 
+
+```
+
+```{r}
+
+# dependencies
+library(lavaan)
+library(janitor)
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+library(Matrix)
+
+```
+
+# Simple way to calculate variance-covariance matricies and means vectors
+
+```{r}
+
+mtcars |>
+  cor(use = "pairwise.complete.obs",
+      method = "pearson") |>
+  round(2)
+
+a <- mtcars |>
+  cov(use = "everything",
+      method = "pearson")
+
+cov2cor(a) |>
+  round(2)
+
+colMeans(mtcars) |>
+  round(2)
+
+```
+
+# Correlation consistency
+
+Given three correlations calculated within a given sample using use = "all", assess whether the third correlation is possible given the first two.
+
+```{r}
+
+correlation_consistency <- function(r_XY, r_XZ, r_YZ = NULL){
+  require(dplyr)
+  # Since X, Y, and Z are z-scored vectors, the correlation coefficient between any pair is the cosine similarity.
+  lower_bound <- cos(acos(r_XY) + acos(r_XZ))
+  upper_bound <- cos(abs(acos(r_XY) - acos(r_XZ)))
+  
+  # correlations are bounded [-1, +1], so correct impossible results
+  lower_bound <- ifelse(lower_bound < -1, -1, 
+                        ifelse(lower_bound > +1, +1, lower_bound))
+  
+  upper_bound <- ifelse(upper_bound < -1, -1, 
+                        ifelse(upper_bound > +1, +1, upper_bound))
+  
+  res <- data.frame(r_XY = r_XY,
+                    r_XZ = r_XZ,
+                    r_YZ = r_YZ,
+                    r_YZ_lower_bound = lower_bound,
+                    r_YZ_upper_bound = upper_bound) |>
+    mutate(consistent = ifelse(r_YZ > r_YZ_lower_bound & r_YZ < r_YZ_upper_bound, TRUE, FALSE))
+  
+  return(res)
+}
+
+correlation_consistency(r_XY = .79, r_XZ = .66, r_YZ = -.10)
+correlation_consistency(r_XY = .90, r_XZ = .90, r_YZ = .10)
+
+```
+
+# Convert a full cor matrix into a lower triangle (e.g., for reporting)
+
+```{r}
+
+cor_matrix_to_lower_triangle <- function(cor_matrix){
+  cor_matrix[upper.tri(cor_matrix, diag = TRUE)] <- NA
+  return(cor_matrix)
+}
+
+mat <- cor(mtcars)
+
+cor_matrix_to_lower_triangle(mat) |>
+  round(2)
+
+```
+
+# Convert an upper or lower triangle of correlations (e.g., as reported in an article) into a full cor matrix
+
+```{r}
+
+triangle_to_cor_matrix <- function(triangle){
+  
+  library(tibble)
+  
+  # if input is a df or tibble, convert to matrix
+  if(is.data.frame(triangle) | is_tibble(triangle)){
+    triangle <- as.matrix(triangle)
+  } 
+  if(!is.matrix(triangle)){
+    stop("Input must be a matrix, data frame, or tibble")
+  }
+  
+  # assess if the triangle is an upper triangle. I.e., are all the lower tri values NA and all the upper tri values non-NA? If so, transpose the matrix to make it a lower triangle. 
+  if(all(is.na(triangle[lower.tri(triangle)])) &
+     all(!is.na(triangle[upper.tri(triangle)]))){
+    triangle <- t(triangle)
+  }
+  
+  # create an empty matrix of the same dimension as 'triangle' to hold the mirrored values
+  mirror_matrix <- matrix(0, nrow = nrow(triangle), ncol = ncol(triangle))
+  
+  # assign the lower triangle of 'mirror_matrix' with the lower triangle of 'triangle'
+  mirror_matrix[lower.tri(mirror_matrix)] <- triangle[lower.tri(triangle)]
+  
+  # add the transposed 'mirror_matrix' to itself to complete the mirroring process
+  full_matrix <- mirror_matrix + t(mirror_matrix) - diag(nrow(triangle))
+  
+  # fill diagonal with 1s
+  diag(full_matrix) <- 1
+  
+  return(full_matrix)
+}
+
+# can handle lower triangles
+mat <- cor_matrix_to_lower_triangle(cor(mtcars)) |> round(2)
+mat
+triangle_to_cor_matrix(mat)
+
+# and upper triangles
+mat <- t(cor_matrix_to_lower_triangle(cor(mtcars))) |> round(2)
+mat
+triangle_to_cor_matrix(mat)
+
+```
+
+# Positive definiteness
+
+Is a correlation matrix of arbitrary size internally consistent?
+
+Assumes no missingness/listwise deletions, and missingness and deletion method may or may not have been fully reported.
+
+```{r}
+
+positive_definite <- function(cor_matrix){
+  all(eigen(cor_matrix)$values > 0)
+}
+
+mat <- cor(mtcars)
+positive_definite(mat)
+
+```
+
+# Inspect distribution of eigenvalues
+
+```{r}
+
+dat <- data.frame(eigenvalues = eigen(mat)$values)
+
+ggplot(dat, aes(eigenvalues)) +
+  geom_histogram(closed = "right", boundary = 0) +
+  geom_vline(xintercept = 0, linetype = "dashed")
+
+```
+
+# Range constraints
+
+Is it worth simply checking that all correlations are [-1, 1]? Seems obvious, but maybe some violate this. Ask frank?
+
+```{r}
+
+all(data_test <= +1) & all(data_test >= -1)
+
+
+```
+
+# Find nearest positive definite matrix
+
+```{r}
+
+# example of a lower triangle matrix without 1s in diagonal
+correlation_matrix_1 <- 
+  lavaan::getCov(x = c(
+    -0.85,
+    -0.85,  0.90,
+    -0.78,  0.83,  0.79,
+     0.68, -0.70, -0.71, -0.45,
+    -0.87,  0.78,  0.89,  0.66, -0.71
+  ),
+  lower = TRUE,
+  diagonal = FALSE)
+
+
+# example of an upper triangle matrix with 1s in diagonal
+correlation_matrix_2 <- 
+  lavaan::getCov(x = c(
+    1.00,  0.32,  0.34, -0.09,  0.21,  0.30, 
+           1.00,  0.45, -0.54,  0.54,  0.64,
+                  1.00, -0.26,  0.32,  0.34, 
+                         1.00, -0.52, -0.49, 
+                                1.00,  0.50,
+                                       1.00
+  ),
+  lower = FALSE, # note you must set lower = FALSE if its an upper triangle
+  diagonal = TRUE) # note you must set diagonal = TRUE if its present 
+
+
+# the same matrix as the above, but one correlation changed so that the matrix is no longer positive-definite.
+correlation_matrix_3 <- 
+  lavaan::getCov(x = c(
+    1.00,  0.32,  0.34, -0.09,  0.21, -0.90, # this top right corner correlation was change drom .30 to -.90
+           1.00,  0.45, -0.54,  0.54,  0.64,
+                  1.00, -0.26,  0.32,  0.34, 
+                         1.00, -0.52, -0.49, 
+                                1.00,  0.50,
+                                       1.00
+  ),
+  lower = FALSE,
+  diagonal = TRUE) 
+
+to_lower_triangle <- function(correlation_matrix){
+  correlation_matrix[upper.tri(correlation_matrix, diag = TRUE)] <- NA
+  return(correlation_matrix)
+}
+
+check_correlation_matrix <- function(correlation_matrix){
+  
+  require(Matrix)
+  require(janitor)
+  
+  # assess if PD
+  is_positive_definite <- positive_definite(correlation_matrix)
+  
+  # new PD matrix
+  nearest_pd_correlation_matrix <- as.matrix(Matrix::nearPD(correlation_matrix, corr = TRUE)$mat)
+  
+  difference_matrix <- correlation_matrix - nearest_pd_correlation_matrix |>
+    round_half_up(2) |>
+    to_lower_triangle() |>
+    t()
+  
+  return(list(is_positive_definite = is_positive_definite,
+              nearest_pd_correlation_matrix = round_half_up(nearest_pd_correlation_matrix, 2),
+              difference_matrix = difference_matrix))
+}
+
+check_correlation_matrix(correlation_matrix_1)
+check_correlation_matrix(correlation_matrix_2)
+check_correlation_matrix(correlation_matrix_3)
+
+correlation_matrix <- correlation_matrix_1
+
+
+```
+
+# Check if correlation matrix is positive-definite
+
+```{r}
+
+# positive_definite <- function(correlation_matrix){
+#   all(eigen(correlation_matrix)$values > 0)
+# }
+
+check_if_positive_definite <- function(correlation_matrix_as_vector, is_lower_triangle, has_diagonal){
+  
+  require(lavaan)
+
+  mat <- 
+    lavaan::getCov(x = correlation_matrix_as_vector,
+                   lower = is_lower_triangle,
+                   diagonal = has_diagonal) 
+  
+  pd <- all(eigen(mat)$values > 0)
+  
+  return(pd)
+}
+
+check_eigenvalues <- function(correlation_matrix_as_vector, is_lower_triangle, has_diagonal){
+  
+  require(lavaan)
+  require(dplyr)
+  
+  mat <- 
+    lavaan::getCov(x = correlation_matrix_as_vector,
+                   lower = is_lower_triangle,
+                   diagonal = has_diagonal) 
+  
+  eigenvalues <- 
+    data.frame(variable = colnames(mat),
+               eigenvalue = eigen(mat)$values) |>
+    mutate(issue = ifelse(eigenvalue < 0, "*", ""))
+  
+  return(eigenvalues)
+}
+
+# example of a lower triangle matrix without 1s in diagonal (most common way correlation matrices are reported)
+mat1 <- c(-0.85,
+         -0.85,  0.90,
+         -0.78,  0.83,  0.79,
+          0.68, -0.70, -0.71, -0.45,
+         -0.87,  0.78,  0.89,  0.66, -0.71)
+
+check_if_positive_definite(mat1, is_lower_triangle = TRUE, has_diagonal = FALSE)
+
+
+# example of an upper triangle matrix with 1s in diagonal
+mat2 <- c(1.00,  0.32,  0.34, -0.09,  0.21,  0.30, 
+                 1.00,  0.45, -0.54,  0.54,  0.64,
+                        1.00, -0.26,  0.32,  0.34, 
+                               1.00, -0.52, -0.49, 
+                                      1.00,  0.50,
+                                             1.00)
+
+mat_temp <- 
+    lavaan::getCov(x = mat2,
+                   lower = FALSE,
+                   diagonal = TRUE) 
+
+
+mat_temp |>
+  knitr::kable() |>
+  kableExtra::kable_classic(full_width = FALSE)
+
+
+check_if_positive_definite(mat2, is_lower_triangle = FALSE, has_diagonal = TRUE)
+
+
+# the same matrix as the above, but one correlation changed so that the matrix is no longer positive-definite.
+mat3 <- c(1.00,  0.32,  0.34, -0.09,  0.21, -0.90, # this top right corner correlation was change from .30 to -.90
+                 1.00,  0.45, -0.54,  0.54,  0.64,
+                        1.00, -0.26,  0.32,  0.34, 
+                               1.00, -0.52, -0.49, 
+                                      1.00,  0.50,
+                                             1.00)
+
+check_if_positive_definite(mat3, is_lower_triangle = FALSE, has_diagonal = TRUE)
+
+# because this last matrix was not positive definite, it can be useful to examine which variable has negative eigenvalues and therefore might be causing the issue. The more extremely negative the eigenvalue, the more problematic.
+check_eigenvalues(mat3, is_lower_triangle = TRUE, has_diagonal = FALSE)
+
+
+```
+
+# Find nearest positive definite matrix
+
+```{r}
+
+correlation <- 
+  lavaan::getCov(x = c(
+    1.00,  0.32,  0.34, -0.09,  0.21, -0.90, # NB it is only this -.90 value that was changed from the original .30, a change of -1.20
+           1.00,  0.45, -0.54,  0.54,  0.64,
+                  1.00, -0.26,  0.32,  0.34, 
+                         1.00, -0.52, -0.49, 
+                                1.00,  0.50,
+                                       1.00
+  ),
+  lower = FALSE,
+  diagonal = TRUE, 
+  )
+
+# assess if PD
+positive_definite(correlation)
+
+# new PD matrix
+nearest_positive_definite <- function(cor_matrix){
+  Matrix::nearPD(cor_matrix, corr = TRUE)$mat
+}
+
+corrected_correlation <- nearest_positive_definite(correlation)
+ 
+# assess if PD
+positive_definite(corrected_correlation)
+
+# print
+corrected_correlation |>
+  round_half_up(2)
+
+# diff between original and corrected
+correlation - nearest_positive_definite(correlation) |>
+  round_half_up(2) |>
+  cor_matrix_to_lower_triangle() |>
+  t()
+
+```
+
+# PD violations - needs work
+
+```{r}
+
+library(MASS)
+
+variables <- 5
+rho <- 0.50
+participants <- 100
+
+mean_vector <- rep(0, variables)
+cov_matrix <- matrix(rep(rho, variables * variables), nrow = variables, ncol = variables)
+diag(cov_matrix) <- 1
+
+dat_sim <- 
+  mvrnorm(participants, mean_vector, cov_matrix) |>
+  as.data.frame()
+
+mat <- cor(dat_sim)
+positive_definite(mat)
+
+```
+
+
+```{r}
+
+# uniform distribution
+#lower_tri <- matrix(runif((variables*(variables-1))/2, min = -1, max = 1), ncol = variables)
+
+simulate_cor_matrix_norm <- function(n_variables, population_r_mean, population_r_sd){
+  
+  # draw correlations from a normal distribution fitting a lower triangle of a matrix
+  lower_tri <- matrix(rnorm((n_variables*(n_variables-1))/2, 
+                            mean = population_r_mean, 
+                            sd = population_r_sd), 
+                      ncol = n_variables)
+  
+  # correct correlations to [-1, 1] bounds
+  lower_tri <- ifelse(lower_tri > 1, 1,
+                      ifelse(lower_tri < -1, -1, lower_tri))
+  
+  # generate a correlation matrix from this lower triangle
+  raw_cor_matrix <- lavaan::getCov(x = lower_tri, lower = TRUE, diagonal = FALSE)
+  
+  # create the nearest positive definite version of this matrix
+  pd_cor_matrix <- nearPD(raw_cor_matrix)$mat
+  
+  # calculate differences between the two matrices
+  diff_matrix <- pd_cor_matrix - raw_cor_matrix
+
+  # results
+  res <- list(
+    raw_cor_matrix = raw_cor_matrix,
+    pd_cor_matrix  = pd_cor_matrix,
+    diff_matrix    = diff_matrix,
+    r_mean         = mean(cor_matrix_to_lower_triangle(pd_cor_matrix), na.rm = TRUE),
+    r_sd           = sd(cor_matrix_to_lower_triangle(pd_cor_matrix), na.rm = TRUE),
+    diff_r_mean    = mean(cor_matrix_to_lower_triangle(diff_matrix), na.rm = TRUE),
+    diff_r_sd      = sd(cor_matrix_to_lower_triangle(diff_matrix), na.rm = TRUE),
+    max_abs_diff_r = max(abs(cor_matrix_to_lower_triangle(diff_matrix)), na.rm = TRUE)
+  )
+  
+  res_rounded <- lapply(res, function(x) janitor::round_half_up(x, digits = 3))
+  
+  return(res_rounded)
+}
+
+#     cov_matrix_is_pd = positive_definite(cor(dat_sim)),
+
+# dat_sim <- 
+#   mvrnorm(n     = n_participants, 
+#           mu    = rep(0, variables), 
+#           Sigma = pd_matrix) |>
+#   as.data.frame()
+
+
+simulate_cor_matrix_norm(n_variables = 5, 
+                         population_r_mean = 0.3, 
+                         population_r_sd = 0.2)
+
+
+```
+
+```{r}
+
+simulate_cor_matrix_uni <- function(n_variables, population_r_min, population_r_max){
+
+  # draw correlations from a uniform distribution fitting a lower triangle of a matrix
+  lower_tri <- matrix(runif((n_variables*(n_variables-1))/2, 
+                            min = population_r_min, 
+                            max = population_r_max),
+                      ncol = n_variables)
+  
+  # correct correlations to [-1, 1] bounds
+  lower_tri <- ifelse(lower_tri > 1, 1,
+                      ifelse(lower_tri < -1, -1, lower_tri))
+  
+  # generate a correlation matrix from this lower triangle
+  raw_cor_matrix <- lavaan::getCov(x = lower_tri, 
+                                   lower = TRUE, 
+                                   diagonal = FALSE,
+                                   names = paste0("X", seq(from = 1, to = n_variables)))
+  
+  # create the nearest positive definite version of this matrix
+  pd_cor_matrix <- nearPD(raw_cor_matrix)$mat
+  
+  # calculate differences between the two matrices
+  diff_matrix <- pd_cor_matrix - raw_cor_matrix
+
+  # results
+  res <- list(
+    raw_cor_matrix = raw_cor_matrix,
+    pd_cor_matrix  = pd_cor_matrix,
+    diff_matrix    = diff_matrix,
+    r_mean         = mean(cor_matrix_to_lower_triangle(pd_cor_matrix), na.rm = TRUE),
+    r_sd           = sd(cor_matrix_to_lower_triangle(pd_cor_matrix), na.rm = TRUE),
+    diff_r_mean    = mean(cor_matrix_to_lower_triangle(diff_matrix), na.rm = TRUE),
+    diff_r_sd      = sd(cor_matrix_to_lower_triangle(diff_matrix), na.rm = TRUE),
+    max_abs_diff_r = max(abs(cor_matrix_to_lower_triangle(diff_matrix)), na.rm = TRUE)
+  )
+  
+  res_rounded <- lapply(res, function(x) janitor::round_half_up(x, digits = 3))
+  
+  return(res_rounded)
+}
+
+res <- simulate_cor_matrix_uni(n_variables = 6, 
+                               population_r_min = -0.20, 
+                               population_r_max = +0.70)
+
+#     cov_matrix_is_pd = positive_definite(cor(dat_sim)),
+
+# dat_sim <-
+#   mvrnorm(n     = 100,
+#           mu    = rep(0, 5),
+#           Sigma = res$pd_cor_matrix,
+#           empirical = TRUE) |>
+#   as.data.frame()
+
+```
+
+
+```{r}
+
+# TODO need to add bounding check to disturb_pd_cor_matrix()
+
+res <- simulate_cor_matrix_uni(n_variables = 5, 
+                               population_r_min = -0.20, 
+                               population_r_max = +0.70)
+
+disturb_pd_cor_matrix <- function(pd_cor_matrix, item_to_offset, offset){
+  cor_matrix <- pd_cor_matrix
+  cor_matrix[item_to_offset+1, 1] <- cor_matrix[item_to_offset+1, 1] + offset
+  cor_matrix[1, item_to_offset+1] <- cor_matrix[1, item_to_offset+1] + offset
+  return(cor_matrix)
+}
+
+disturb_pd_cor_matrix(res$pd_cor_matrix, item_to_offset = 1, offset = 0.10) |>
+  positive_definite()
+
+```
+
+proportion of pd raw matrices
+
+```{r}
+
+sim_uni <- function(n_variables, population_r_min, population_r_max){
+  res <- simulate_cor_matrix_uni(n_variables = n_variables, 
+                                 population_r_min = population_r_min, 
+                                 population_r_max = population_r_max) 
+  results <- positive_definite(res$raw_cor_matrix)
+  return(results)
+}
+
+sim_results1 <- replicate(n = 10000, expr = sim_uni(n_variables = 5, population_r_min = -0.00, population_r_max = +0.50)) |> mean()
+sim_results2 <- replicate(n = 10000, expr = sim_uni(n_variables = 5, population_r_min = -0.20, population_r_max = +0.70)) |> mean()
+sim_results3 <- replicate(n = 10000, expr = sim_uni(n_variables = 5, population_r_min = -0.40, population_r_max = +0.90)) |> mean()
+sim_results4 <- replicate(n = 10000, expr = sim_uni(n_variables = 5, population_r_min = -0.25, population_r_max = +0.25)) |> mean()
+sim_results5 <- replicate(n = 10000, expr = sim_uni(n_variables = 5, population_r_min = -0.45, population_r_max = +0.45)) |> mean()
+sim_results6 <- replicate(n = 10000, expr = sim_uni(n_variables = 5, population_r_min = -0.65, population_r_max = +0.65)) |> mean()
+
+sim_results1
+sim_results2
+sim_results3
+sim_results4
+sim_results5
+sim_results6
+
+sim_results7 <- replicate(n = 1, expr = sim_uni(n_variables = 6, population_r_min = -0.00, population_r_max = +0.50)) |> mean()
+sim_results8 <- replicate(n = 10000, expr = sim_uni(n_variables = 20, population_r_min = -0.20, population_r_max = +0.70)) |> mean()
+sim_results9 <- replicate(n = 10000, expr = sim_uni(n_variables = 20, population_r_min = -0.40, population_r_max = +0.90)) |> mean()
+
+sim_results7
+sim_results8
+sim_results9
+
+```
+
+- nonPDness is most detectable when both the individual correlations and variance among correlations are high. Even then, 
+
+```{r}
+
+sim_norm <- function(n_variables, population_r_mean, population_r_sd){
+  res <- simulate_cor_matrix_norm(n_variables = n_variables, 
+                                  population_r_mean = population_r_mean, 
+                                  population_r_sd = population_r_sd) 
+  results <- positive_definite(res$raw_cor_matrix)
+  return(results)
+}
+
+sim_results1n <- replicate(n = 10000, expr = sim_norm(n_variables = 5, population_r_mean = 0.25, population_r_sd = +0.10)) |> mean()
+sim_results2n <- replicate(n = 10000, expr = sim_norm(n_variables = 5, population_r_mean = 0.25, population_r_sd = +0.20)) |> mean()
+sim_results3n <- replicate(n = 10000, expr = sim_norm(n_variables = 5, population_r_mean = 0.25, population_r_sd = +0.30)) |> mean()
+sim_results4n <- replicate(n = 10000, expr = sim_norm(n_variables = 5, population_r_mean = 0.00, population_r_sd = +0.10)) |> mean()
+sim_results5n <- replicate(n = 10000, expr = sim_norm(n_variables = 5, population_r_mean = 0.00, population_r_sd = +0.20)) |> mean()
+sim_results6n <- replicate(n = 10000, expr = sim_norm(n_variables = 5, population_r_mean = 0.00, population_r_sd = +0.30)) |> mean()
+
+sim_results1n
+sim_results2n
+sim_results3n
+sim_results4n
+sim_results5n
+sim_results6n
+
+```
+
+
+proportion of PD disturbed matrices
+
+```{r}
+
+sim <- function(n_variables, population_r_min, population_r_max, item_to_offset, offset){
+  res <- simulate_cor_matrix_uni(n_variables = n_variables, 
+                                 population_r_min = population_r_min, 
+                                 population_r_max = population_r_max) 
+  results <- disturb_pd_cor_matrix(res$pd_cor_matrix, item_to_offset = item_to_offset, offset = offset) |>
+    positive_definite()
+  return(results)
+}
+
+sim_results <- 
+  replicate(n = 10000, 
+            expr = sim(n_variables = 5,
+                       population_r_min = -0.20, 
+                       population_r_max = +0.70,
+                       item_to_offset = 1,
+                       offset = +0.20)) |>
+  mean()
+
+sim_results
+
+```
+
+```{r}
+
+sim2 <- function(n_variables, population_r_min, population_r_max, item_to_offset, offset){
+  res <- simulate_cor_matrix_uni(n_variables = n_variables, 
+                                 population_r_min = population_r_min, 
+                                 population_r_max = population_r_max) 
+  results <- 
+    disturb_pd_cor_matrix(res$pd_cor_matrix, item_to_offset = item_to_offset, offset = offset) |>
+    disturb_pd_cor_matrix(item_to_offset = item_to_offset + 1, offset = offset) |>
+    positive_definite()
+  return(results)
+}
+
+sim_results2 <- 
+  replicate(n = 10000, 
+            expr = sim2(n_variables = 5,
+                        population_r_min = -0.20, 
+                        population_r_max = +0.70,
+                        item_to_offset = 1,
+                        offset = +0.20)) |>
+  mean()
+
+sim_results2
+
+```
+
+```{r}
+
+sim3 <- function(n_variables, population_r_min, population_r_max, item_to_offset, offset){
+  res <- simulate_cor_matrix_uni(n_variables = n_variables, 
+                                 population_r_min = population_r_min, 
+                                 population_r_max = population_r_max) 
+  results <- 
+    disturb_pd_cor_matrix(res$pd_cor_matrix, item_to_offset = item_to_offset, offset = offset) |>
+    disturb_pd_cor_matrix(item_to_offset = item_to_offset + 1, offset = offset) |>
+    disturb_pd_cor_matrix(item_to_offset = item_to_offset + 2, offset = offset) |>
+    positive_definite()
+  return(results)
+}
+
+sim_results3 <- 
+  replicate(n = 10000, 
+            expr = sim3(n_variables = 5,
+                        population_r_min = -0.20, 
+                        population_r_max = +0.70,
+                        item_to_offset = 1,
+                        offset = +0.20)) |>
+  mean()
+
+sim_results3
+
+```
+
+```{r}
+
+sim4 <- function(n_variables, population_r_min, population_r_max, item_to_offset, offset){
+  res <- simulate_cor_matrix_uni(n_variables = n_variables, 
+                                 population_r_min = population_r_min, 
+                                 population_r_max = population_r_max) 
+  results <- 
+    disturb_pd_cor_matrix(res$pd_cor_matrix, item_to_offset = item_to_offset, offset = offset) |>
+    disturb_pd_cor_matrix(item_to_offset = item_to_offset + 1, offset = offset*-1) |>
+    positive_definite()
+  return(results)
+}
+
+sim_results4 <- 
+  replicate(n = 10000, 
+            expr = sim4(n_variables = 5,
+                        population_r_min = -0.20, 
+                        population_r_max = +0.70,
+                        item_to_offset = 1,
+                        offset = +0.20)) |>
+  mean()
+
+sim_results4
+
+```
+
+# For shiny app
+
+## triangle_to_cor_matrix, is_positive_definite, within_bounds
+
+```{r}
+
+library(lavaan)
+library(janitor)
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+library(Matrix)
+
+triangle_to_cor_matrix <- function(triangle){
+  
+  library(tibble)
+  
+  # if input is a df or tibble, convert to matrix
+  if(is.data.frame(triangle) | is_tibble(triangle)){
+    triangle <- as.matrix(triangle)
+  } 
+  if(!is.matrix(triangle)){
+    stop("Input must be a matrix, data frame, or tibble")
+  }
+  
+  # assess if the triangle is an upper triangle. I.e., are all the lower tri values NA and all the upper tri values non-NA? If so, transpose the matrix to make it a lower triangle. 
+  if(all(is.na(triangle[lower.tri(triangle)])) &
+     all(!is.na(triangle[upper.tri(triangle)]))){
+    triangle <- t(triangle)
+  }
+  
+  # create an empty matrix of the same dimension as 'triangle' to hold the mirrored values
+  mirror_matrix <- matrix(0, nrow = nrow(triangle), ncol = ncol(triangle))
+  
+  # assign the lower triangle of 'mirror_matrix' with the lower triangle of 'triangle'
+  mirror_matrix[lower.tri(mirror_matrix)] <- triangle[lower.tri(triangle)]
+  
+  # add the transposed 'mirror_matrix' to itself to complete the mirroring process
+  full_matrix <- mirror_matrix + t(mirror_matrix) - diag(nrow(triangle))
+  
+  # fill diagonal with 1s
+  diag(full_matrix) <- 1
+  
+  return(full_matrix)
+}
+
+is_positive_definite <- function(correlation_matrix){
+  all(eigen(correlation_matrix)$values > 0)
+}
+
+within_bounds <- function(correlation_matrix){
+  all(correlation_matrix <= +1) & all(correlation_matrix >= -1)
+}
+
+
+data_test <- read_csv("test_data_correct.csv") |>
+  triangle_to_cor_matrix()
+
+positive_definite(data_test) 
+
+within_bounds(data_test) 
+
+# TODO add triangulation of which value might be off 
+
+```
+
+## corBoundary
+
+### original code
+
+```{r}
+
+#' Correlative Angle Matrix to Correlation Matrix
+#'
+#' Transform a correlative angle matrix to its correlation matrix form
+#' @param angMat A matrix which contains the correlative angles between variables
+#' @return A correlation matrix corresponding to the input angle matrix
+#' @examples
+#' x <- matrix(c(0,0,0,0,1.671,0,0,0,1.266,0.987,0,0,1.571,1.044,0,0), ncol = 4, nrow = 4, byrow = T)
+#' round(angleToCor(x), 2)
+#' @export
+angleToCor <- function(angMat) #function to loop over a correlative angle matrix calling bsolve on each element to get bs which are multiplied by b transpose to get the correlation matrix
+{
+	if(nrow(angMat) != ncol(angMat))
+	{
+		stop("Matrix must be square!")
+	}
+	if(nrow(angMat) <= 1)
+	{
+		stop("Dimension must be greater than 1!")
+	}
+	b <- matrix(0, nrow = nrow(angMat), ncol = ncol(angMat))
+	for(j in 1:ncol(angMat))
+	{
+		for(i in 1:nrow(angMat))
+		{
+			b[i, j] <- bsolve(angMat, i, j)
+		}
+	}
+	return(b%*%t(b))
+}
+
+#'Correlation Boundary
+#'
+#'Computes the minimum and maximum values for a correlation between two variables in a correlation matrix
+#'@param corMat A correlation matrix
+#'@param var1 A number corresponding to the position in the matrix of the first variable of interest
+#'@param var2 A number corresponding to the position in the matrix of the second variable of interest
+#'@param method "default" computes the bound based of using values of 0 and pi in the correlative angle matrix. "greek" uses a closed form equation to compute.
+#'@return A vector in which the first element is the minimum correlation and the second element is the maximum correlation
+#'@examples
+#'x <- matrix(c(1,.5,.5,0,.5,1,.5,.3,.5,.5,1,-.1,0,.3,-.1,1), nrow = 4, ncol = 4)
+#'x[4,3] <- NA
+#'x[3,4] <- NA
+#'boundary(x, 4, 3)
+#'@export
+boundary <- function(corMat, var1, var2, method = "default") #find correlation boundary by NUMPACHAROEN's logic on page 407.
+{
+	if(nrow(corMat) != ncol(corMat))
+	{
+		stop("Matrix must be square!")
+	}
+	if(nrow(corMat) <= 1)
+	{
+		stop("Dimension must be greater than 1!")
+	}
+	n <- nrow(corMat)
+	if(identical(method, "default"))
+	{
+		if(var1 == var2) #if elements are equal, their bounded correlation is 1
+			return(c(1, 1))
+		if(var1 == ncol(corMat)) #if var1 is in the last column, just move var2 to second to last
+			corMat <- corSwap(corMat, var2, ncol(corMat) - 1)
+		if(var2 == ncol(corMat)) #if var2 is in the last column, just move var1 to second to last
+			corMat <- corSwap(corMat, var1, ncol(corMat) - 1)
+		if(var2 != ncol(corMat) && var1 != ncol(corMat)) #if var1 and var2 are not in the last and second to last column, move them there
+		{
+			corMat <- corSwap(corMat, var1, ncol(corMat))
+			corMat <- corSwap(corMat, var2, ncol(corMat) - 1)
+		}
+	upper <- corToAng(corMat)
+	lower <- corToAng(corMat)
+	upper[ncol(corMat), ncol(corMat)-1] <- 0 #set C[n, n-1] to 0 for maximum correlation
+	lower[ncol(corMat), ncol(corMat)-1] <- pi #set C[n, n-1] to pi for minimum correlation
+	return(c(angleToCor(lower)[ncol(corMat), ncol(corMat)-1],angleToCor(upper)[ncol(corMat), ncol(corMat)-1])) #convert new correlative angle matrices (upper and lower above) to correlation matrices, and return the value of C[n, n-1] which is now minimized and maximized.
+	}
+	if(identical(method, "greek"))
+	{
+		if(var1 == var2) #if elements are equal, their bounded correlation is 1
+			return(c(1, 1))
+		if(var1 == ncol(corMat)) #if var1 is in the last column, just move var2 to second to last
+			corMat <- corSwap(corMat, var2, ncol(corMat) - 1)
+		if(var2 == ncol(corMat)) #if var2 is in the last column, just move var1 to second to last
+			corMat <- corSwap(corMat, var1, ncol(corMat) - 1)
+		if(var2 != ncol(corMat) && var1 != ncol(corMat)) #if var1 and var2 are not in the last and second to last column, move them there
+		{
+			corMat <- corSwap(corMat, var1, ncol(corMat))
+			corMat <- corSwap(corMat, var2, ncol(corMat) - 1)
+		}
+		theta <- corToAng(corMat)
+		corr_alpha <- 1
+		corr_beta <- cos(theta[n, (n - 1)])
+		corr_gamma <- 1
+		for(k in 1:(n - 2))
+		{
+			corr_alpha <- corr_alpha * sin(theta[(n - 1), k])
+			corr_beta <- corr_beta * sin(theta[n, k])
+		}
+		for(k in 1:(n - 1))
+		{
+			corr_gamma <- corr_gamma * sin(theta[n, k])
+		}
+		lower <- corMat[n, (n - 1)] + (corr_alpha * (-1 * sqrt(corr_beta^2 + corr_gamma^2) - corr_beta))
+		upper <- corMat[n, (n - 1)] + (corr_alpha * (sqrt(corr_beta^2 + corr_gamma^2) - corr_beta))
+		return(c(lower, upper))
+	}
+}
+
+bsolve <- function(angMat, i, j) #implement NUMPACHAROEN algorithm
+{
+	if(nrow(angMat) != ncol(angMat))
+	{
+		stop("Matrix must be square!")
+	}
+	dimension = nrow(angMat)
+	if(i == 1 && j == 1)
+		return(1)
+	if(i >= 2 && j == 1)
+		return(cos(angMat[i,j]))
+	if(i == j && i >= 2 && j <= dimension)
+	{
+		answer <- 1
+		for(index in 1:(j - 1))
+		{
+			answer <- answer * sin(angMat[i,index])
+		}
+		return(answer)
+	}
+	if(j >= 2 && j <= (i - 1))
+	{
+		answer <- cos(angMat[i,j])
+		for(index in 1:(j - 1))
+		{
+			answer <- answer * sin(angMat[i,index])
+		}
+		return(answer)
+	}
+	if(j >= (i + 1) && j <= dimension)
+		return(0)
+}
+
+cholesky <- function(mat) #custom Cholesky-Crout algorithm to handle missing data
+{
+	x <- matrix(0, ncol = NCOL(mat), nrow = NROW(mat))
+	for(j in 1:ncol(mat))
+	{
+		for(i in j:nrow(mat))
+		{
+			if(j == i)
+			{
+				temp = 0
+				if((j - 1) != 0)
+				{
+					for(k in 1:(j - 1))
+					{
+						temp = temp + (x[j, k]^2)
+					}
+				}
+				x[i, j] = sqrt(mat[j, j] - temp)
+			}
+			else
+			{
+				temp = 0
+				if((j - 1) != 0)
+				{
+					for(k in 1:(j - 1))
+					{
+						temp = temp + (x[i, k] * x[j, k])
+					}
+				}
+				x[i, j] = (mat[i, j] - temp)/x[j, j]
+			}
+		}
+	}
+	x[is.nan(x)] <- 0
+	return(x)
+}
+
+#'Swaps variables in a correlation matrix
+#'
+#'Moves two variables in a correlation matrix while preserving the structure of the matrix
+#'@param corMat A correlation matrix
+#'@param i The position of the first variable to swap
+#'@param j The position of the second variable to swap
+#'@return The swapped correlation matrix
+#'@examples
+#'x <- matrix(c(1,.5,.5,0,.5,1,.5,.3,.5,.5,1,-.1,0,.3,-.1,1), nrow = 4, ncol = 4)
+#'corswap(x, 1, 4)
+#'@export
+corSwap <- function(corMat, i, j) #swaps columns i and j of a correlation matrix, and then swaps rows i and j
+{
+	if(i == j)
+		return(corMat)
+	temp <- corMat[,i]
+	corMat[,i] <- corMat[,j]
+	corMat[,j] <- temp
+	temp <- corMat[i,]
+	corMat[i,] <- corMat[j,]
+	corMat[j,] <- temp
+	return(corMat)
+}
+
+#' Imputes missing correlation
+#'
+#' Recursively imputes the value of missing correlations
+#' @param corMat A matrix which contains the correlations between variables
+#' @param method "average" uses the midpoint (average) of the correlative bound. "lbound" uses the left boundary (closest to -1) of the correlation. "rbound" uses the right boundary (closest to 1) of the correlation. "min" uses the smallest boundary in terms of absolute value. "max" uses the largest boundary in terms of absolute value. "custom" allows for the specification of a specific discrete distribution across the boundary interval to be specified.
+#' @param interval_prob A vector used with method = "custom". Specifies the probability of sampling from a specific slice of the boundary interval. All elements of the vector must add to 1.
+#' @param interval A vector that specifies the section of the boundary interval which is to be sampled from. For each probability in "interval_prob" two points must be specified. Points are specified as decimal values which correspond to the proportion of the interval in which to be sample from. For example, c(.5, .8) would sample from 50\% to 80\% of the boundary interval with a probability specified with the associated "interval_prob".
+#' @return A correlation matrix with all possible missing values recursively imputed using specific method
+#' @examples
+#'x <- matrix(c(1,.5,.5,0,.5,1,.5,.3,.5,.5,1,-.1,0,.3,-.1,1), nrow = 4, ncol = 4)
+#'x[4,3] <- NA
+#'x[3,4] <- NA
+#'corImpute(x)
+#'corImpute(x, method="lbound")
+#'corImpute(x, method="custom", interval_prob=c(.2, .8), interval=c(0, .4, .8, 1))
+#' @export
+corImpute <- function(corMat, method = "average", interval_prob = NA, interval = NA)
+{
+  if(countMiss(corMat) > 1)
+  {
+    stop("Correlation matrix has more than 1 missing entry! Only 1 missing correlation currently supported!")
+  }
+  if(nrow(corMat) != ncol(corMat))
+  {
+    stop("Matrix must be square!")
+  }
+  if(nrow(corMat) <= 1)
+  {
+    stop("Dimension must be greater than 1!")
+  }
+  if(identical(method, "custom"))
+  {
+    if(is.na(interval_prob[1]))
+    {
+      stop("You Must Specify Interval Probabilities!")
+    }
+    if(is.na(interval[1]))
+    {
+      stop("You Must Specify the Correlative Intervals!")
+    }
+    if((length(interval_prob)*2) != length(interval))
+    {
+      stop("Intervals Don't Match With Number of Probabilities!")
+    }
+    if(sum(interval_prob) != 1)
+    {
+      stop("The Probabilities of All Intervals Must be 1!")
+    }
+  }
+  #for(i in 2:nrow(corMat))
+  for(i in nrow(corMat):nrow(corMat))
+  {
+    bounds <- NA
+    bounds <- matSolve(corMat[1:i, 1:i])
+    if(is.null(bounds))
+    {
+      next
+    }
+    if(identical(method, "average"))
+    {
+      corMat[1:i, 1:i][is.na(corMat[1:i, 1:i])] <- (bounds[1] + bounds[2]) / 2
+    }
+    else if(identical(method, "lbound"))
+    {
+      corMat[1:i, 1:i][is.na(corMat[1:i, 1:i])] <- bounds[1]
+    }
+    else if(identical(method, "rbound"))
+    {
+      corMat[1:i, 1:i][is.na(corMat[1:i, 1:i])] <- bounds[2]
+    }
+    else if(identical(method, "min"))
+    {
+      if(bounds[1]^2 > bounds[2]^2)
+      {
+        min_bound <- bounds[2]
+      }
+      else
+      {
+        min_bound <- bounds[1]
+      }
+      corMat[1:i, 1:i][is.na(corMat[1:i, 1:i])] <- min_bound
+    }
+    else if(identical(method, "max"))
+    {
+      if(bounds[1]^2 > bounds[2]^2)
+      {
+        max_bound <- bounds[1]
+      }
+      else
+      {
+        max_bound <- bounds[2]
+      }
+      corMat[1:i, 1:i][is.na(corMat[1:i, 1:i])] <- max_bound
+    }
+    else if(identical(method, "uniform"))
+    {
+      corMat[1:i, 1:i][is.na(corMat[1:i, 1:i])] <- runif(1, min = bounds[1], max = bounds[2])
+    }
+    else if(identical(method, "custom"))
+    {
+      bound_length <- bounds[2] - bounds[1]
+      interval_pick <- runif(1)
+      prob_index <- NA
+      for(k in 1:length(interval_prob))
+      {
+        if(interval_pick <= sum(interval_prob[1:k]))
+        {
+          prob_index <- k
+          break
+        }
+      }
+      adjusted_lb <- bounds[1] + (bound_length * interval[((prob_index * 2) - 1)])
+      adjusted_ub <- bounds[1] + (bound_length * interval[(prob_index * 2)])
+      corMat[1:i, 1:i][is.na(corMat[1:i, 1:i])] <- runif(1, min = adjusted_lb, max = adjusted_ub)
+    }
+    else
+    {
+      stop("Valid Methods are: average, min, max, uniform, lbound, rbound, and custom!")
+    }
+  }
+  return(corMat)
+}
+
+#' Correlation Matrix to Correlative Angle Matrix
+#'
+#' Transform a correlation matrix to its correlative angle matrix form
+#' @param corMat A matrix which contains the correlations between variables
+#' @return A correlative angle matrix corresponding to the input correlation matrix
+#' @examples
+#'x <- matrix(c(1,.5,.5,0,.5,1,.5,.3,.5,.5,1,-.1,0,.3,-.1,1), nrow = 4, ncol = 4)
+#'x[4,3] <- NA
+#'x[3,4] <- NA
+#'y <- corToAng(x)
+#'y[4,3] <- 0
+#'round(angleToCor(y), 2)
+#' @export
+corToAng <- function(corMat) #function to loop over a correlation matrix calling thetaSolve on each element to get the theta values for the correlative angle matrix
+{
+	if(nrow(corMat) != ncol(corMat))
+	{
+		stop("Matrix must be square!")
+	}
+	if(nrow(corMat) <= 1)
+	{
+		stop("Dimension must be greater than 1!")
+	}
+	angMat <- matrix(NA, nrow = nrow(corMat), ncol = ncol(corMat))
+	b <- cholesky(corMat)
+	for(j in 1:ncol(angMat))
+	{
+		for(i in 1:nrow(angMat))
+		{
+			angMat[i,j] <- thetaSolve(b, i, j, angMat)
+		}
+	}
+	return(angMat)
+}
+
+#'Count missing values
+#'
+#'Counts the number of missing correlations in a correlation matrix (lower triangular)
+#'@param corMat A correlation matrix
+#'@return The number of missing correlations
+#'@examples
+#'x <- matrix(c(1,.5,.5,0,.5,1,.5,.3,.5,.5,1,-.1,0,.3,-.1,1), nrow = 4, ncol = 4)
+#'x[4,3] <- NA
+#'x[3,4] <- NA
+#'countMiss(x)
+#'@export
+countMiss <- function(corMat) #function that counts the number of missing correlations in a lower triangular correlation matrix
+{
+	if(nrow(corMat) != ncol(corMat))
+	{
+		stop("Matrix must be square!")
+	}
+	miss <- 0
+	for(i in 1:nrow(corMat))
+	{
+		for(j in 1:i)
+		{
+			if(is.na(corMat[i, j]))
+				miss <- miss + 1
+		}
+	}
+	return(miss)
+}
+
+#'Solves for the boundary of one missing correlation
+#'
+#'Automatically detects and returns the boundary of one missing correlation in a correlation matrix
+#'@param corMat A correlation matrix with one missing correlation
+#'@return A vector in which the first element is the minimum correlation and the second element is the maximum correlation
+#'@examples
+#'x <- matrix(c(1,.5,.5,0,.5,1,.5,.3,.5,.5,1,-.1,0,.3,-.1,1), nrow = 4, ncol = 4)
+#'x[4,3] <- NA
+#'x[3,4] <- NA
+#'matSolve(x)
+#'@export
+matSolve <- function(corMat) #automatically finds the boundaries of one missing entry in a correlative matrix
+{
+	if(countMiss(corMat) > 1)
+		stop("Correlation matrix has more than 1 missing entry!")
+	for(i in 1:nrow(corMat))
+	{
+		for(j in 1:i)
+		{
+			if(is.na(corMat[i,j]))
+			{
+				return(boundary(corMat, i, j))
+			}
+		}
+	}
+}
+
+thetaSolve <- function(bMat, i, j, partAng=NA) #solves for theta using logic on NUMPACHAROEN (2013) page 405, partial angle matrix can be provided to speed up computation (so code can access what it already has calculated previously instead of having to compute everything from the beginning column again)
+{
+  if(!is.matrix(partAng) || !is.data.frame(partAng))
+    partAng <- matrix(NA, ncol = NCOL(bMat), nrow = NROW(bMat))
+  if(nrow(bMat) != ncol(bMat))
+  {
+    stop("Matrix must be square!")
+  }
+  dimension = nrow(bMat)
+  if(j >= i)
+    return(0)
+  if(i >= 2 && j == 1)
+    return(acos(bMat[i, j]))
+  if(j >= 2 && j <= (i - 1))
+  {
+    sinprod <- 1
+    for(index in 1:(j - 1))
+    {
+      if(is.na(partAng[i, index]))
+        sinprod <- sinprod * sin(thetaSolve(bMat, i, index))
+      else
+        sinprod <- sinprod * sin(partAng[i, index])
+    }
+    if(is.na(sinprod))
+      return(NA)
+    if(sinprod == 0)
+      return(0)
+    else
+    {
+      if(is.na((bMat[i, j]/sinprod)))
+        return(NA)
+      if((bMat[i, j]/sinprod) > 1) #If product is out of the domain of acos, treat it as acos(1)
+        return(0)
+      if((bMat[i, j]/sinprod) < -1) #If product is out of the domain of acos, treat it as acos(-1)
+        return(pi)
+      else
+       return(acos(bMat[i, j]/sinprod))
+    }
+  }
+}
+
+#' Check for valid correlation matrix
+#'
+#' Determines whether a matrix is a valid correlation matrix
+#' @param corMat A matrix which contains the correlations between variables
+#' @param epsilon Numeric threshold for checking whether a correlation or eigenvalue is out of bounds
+#' @return TRUE if the correlation matrix is valid, FALSE otherwise
+#' @examples
+#' x <- matrix(c(1,.5,.5,0,.5,1,.5,.3,.5,.5,1,-.1,0,.3,-.1,1), nrow = 4, ncol = 4)
+#' is.corMat(x)
+#' x[1,1] <- 5
+#' is.corMat(x)
+#' @export
+is.corMat <- function(corMat, epsilon = .00001)
+{
+	if(ncol(corMat) != nrow(corMat))
+	{
+		warning("Not Square!")
+		return(FALSE)
+	}
+	if(sum(diag(corMat)) - ncol(corMat) > epsilon)
+	{
+		warning("Diagonal Not 1!")
+		return(FALSE)
+	}
+	if(!isSymmetric(corMat))
+	{
+		warning("Not Symmetric!")
+		return(FALSE)
+	}
+	for(i in 1:ncol(corMat))
+	{
+		for(j in 1:i)
+			if(corMat[i, j] > (1 + epsilon) | corMat[i, j] < (-1 - epsilon))
+			{
+				warning("Out of Bounds!")
+				return(FALSE)
+			}
+	}
+	if(min(eigen(corMat)$values) < (-1 * epsilon))
+	{
+		warning("Not Positive Semidefinite!")
+		warning(min(eigen(corMat)$values))
+		return(FALSE)
+	}
+	return(TRUE)
+}
+
+```
+
+\TODO is.corMat checks if the matrix is pd - compare its contents to my code above!
+
+#### example 1
+
+```{r}
+
+x <- matrix(c(1,.5,.5,0,.5,1,.5,.3,.5,.5,1,-.1,0,.3,-.1,1), nrow = 4, ncol = 4)
+y <- x
+y[4,3] # = -0.1
+y[4,3] <- NA
+y[3,4] <- NA
+
+corImpute(x, method = "average")
+
+round(corImpute(x, method = "average"), 2)[4,3] # returns -0.1
+round(corImpute(y, method = "lbound"), 2)[4,3] # returns -0.67
+round(corImpute(y, method = "rbound"), 2)[4,3] # returns 0.87
+
+```
+
+#### example 2
+
+```{r}
+
+data_test_missing <- data_test 
+
+data_test_missing[1,3] <- NA
+data_test_missing[3,1] <- NA
+
+data_test[1,3]
+round(corImpute(data_test_missing, method = "average"), 2)[1,3]
+round(corImpute(data_test_missing, method = "lbound"), 2)[1,3]
+round(corImpute(data_test_missing, method = "rbound"), 2)[1,3]
+
+```
+
+
+### Imputed
+
+### Reappropriation for error detection
+
+#### chatgpt attempt
+
+```{r}
+
+# # Function to find the correlation with the largest difference between reported and imputed values
+# detect_error <- function(corMat, method = "average") {
+#   n <- nrow(corMat)
+#   if (n != ncol(corMat)) {
+#     stop("Matrix must be square!")
+#   }
+# 
+#   results <- data.frame(
+#     row = integer(),
+#     col = integer(),
+#     original_value = numeric(),
+#     imputed_value = numeric(),
+#     difference = numeric()
+#   )
+# 
+#   diff_mat <- matrix(0, nrow = n, ncol = n)
+# 
+#   for (i in 1:n) {
+#     for (j in 1:i) {
+#       if (i != j) { # Skip the diagonal elements
+#         original_value <- corMat[i, j]
+#         
+#         # Create a copy of the matrix with the current element set to NA
+#         temp_mat <- corMat
+#         temp_mat[i, j] <- NA
+#         temp_mat[j, i] <- NA
+#         
+#         # Impute the missing value
+#         imputed_mat <- corImpute(temp_mat, method = method)
+#         imputed_value <- imputed_mat[i, j]
+#         
+#         # Calculate the difference
+#         diff <- abs(original_value - imputed_value)
+#         
+#         # Store the results in the data frame
+#         results <- rbind(results, data.frame(
+#           row = i,
+#           col = j,
+#           original_value = original_value,
+#           imputed_value = imputed_value,
+#           difference = diff
+#         ))
+# 
+#         # Store the difference in the difference matrix
+#         diff_mat[i, j] <- diff
+#         diff_mat[j, i] <- diff
+#       }
+#     }
+#   }
+# 
+#   # Sort the results by difference in descending order
+#   results <- results[order(-results$difference), ]
+# 
+#   # Flatten the matrix and sort the absolute differences in descending order
+#   diffs <- as.vector(diff_mat)
+#   sorted_diffs <- sort(unique(abs(diffs)), decreasing = TRUE)
+#   
+#   # Create a matrix to store the annotations
+#   annotated_matrix <- matrix(".", nrow = nrow(diff_mat), ncol = ncol(diff_mat))
+#   
+#   # Annotate the largest difference with "***"
+#   annotated_matrix[abs(diff_mat) == sorted_diffs[1]] <- "***"
+#   
+#   # Annotate the second largest difference with "**"
+#   if (length(sorted_diffs) > 1) {
+#     annotated_matrix[abs(diff_mat) == sorted_diffs[2]] <- "**"
+#   }
+#   
+#   # Annotate the third largest difference with "*"
+#   if (length(sorted_diffs) > 2) {
+#     annotated_matrix[abs(diff_mat) == sorted_diffs[3]] <- "*"
+#   }
+#   
+#   # Create a matrix to store the formatted values
+#   formatted_matrix <- matrix("", nrow = n, ncol = n)
+#   
+#   for (i in 1:n) {
+#     for (j in 1:n) {
+#       if (i != j) { # Skip the diagonal elements
+#         diff <- diff_mat[i, j]
+#         formatted_matrix[i, j] <- sprintf("%.2f [%.2f]", corMat[i, j], diff)
+#       }
+#     }
+#   }
+#   
+#   # Annotate the top differences in the formatted matrix
+#   for (i in 1:n) {
+#     for (j in 1:n) {
+#       if (annotated_matrix[i, j] != ".") {
+#         formatted_matrix[i, j] <- paste0(formatted_matrix[i, j], " ", annotated_matrix[i, j])
+#       }
+#     }
+#   }
+# 
+#   return(list(
+#     results_df = results,
+#     original_matrix = corMat,
+#     difference_matrix = diff_mat,
+#     annotated_matrix = annotated_matrix,
+#     formatted_matrix = formatted_matrix
+#   ))
+# }
+# 
+# 
+# # Example usage
+# data_test
+# 
+# data_test[4,1]
+# data_test_temp <- data_test
+# data_test_temp[4, 1] <- 0.7
+# data_test_temp[1, 4] <- 0.7
+# 
+# res <- detect_error(data_test_temp, method = "average")
+# 
+# res$results_df
+# 
+# res$original_matrix
+# 
+# res$difference_matrix |> round(2)
+# 
+# res$original_matrix - res$difference_matrix |> 
+#   round(2)
+# 
+# 
+# res$annotated_matrix
+# 
+# res$formatted_matrix |>
+#   kable()
+# 
+# data_test
+
+```
+
+- \TODO needs to be able to handle ties
+
+
+# Correlation matrix checking - WORKING
+
+```{r}
+
+#'Correlation Boundary
+#'
+#'Computes the minimum and maximum values for a correlation between two variables in a correlation matrix
+#'@param corMat A correlation matrix
+#'@param var1 A number corresponding to the position in the matrix of the first variable of interest
+#'@param var2 A number corresponding to the position in the matrix of the second variable of interest
+#'@param method "default" computes the bound based of using values of 0 and pi in the correlative angle matrix. "greek" uses a closed form equation to compute.
+#'@return A vector in which the first element is the minimum correlation and the second element is the maximum correlation
+#'@examples
+#'x <- matrix(c(1,.5,.5,0,.5,1,.5,.3,.5,.5,1,-.1,0,.3,-.1,1), nrow = 4, ncol = 4)
+#'x[4,3] <- NA
+#'x[3,4] <- NA
+#'boundary(x, 4, 3)
+#'@export
+boundary <- function(corMat, var1, var2, method = "default") #find correlation boundary by NUMPACHAROEN's logic on page 407.
+{
+	if(nrow(corMat) != ncol(corMat))
+	{
+		stop("Matrix must be square!")
+	}
+	if(nrow(corMat) <= 1)
+	{
+		stop("Dimension must be greater than 1!")
+	}
+	n <- nrow(corMat)
+	if(identical(method, "default"))
+	{
+		if(var1 == var2) #if elements are equal, their bounded correlation is 1
+			return(c(1, 1))
+		if(var1 == ncol(corMat)) #if var1 is in the last column, just move var2 to second to last
+			corMat <- corSwap(corMat, var2, ncol(corMat) - 1)
+		if(var2 == ncol(corMat)) #if var2 is in the last column, just move var1 to second to last
+			corMat <- corSwap(corMat, var1, ncol(corMat) - 1)
+		if(var2 != ncol(corMat) && var1 != ncol(corMat)) #if var1 and var2 are not in the last and second to last column, move them there
+		{
+			corMat <- corSwap(corMat, var1, ncol(corMat))
+			corMat <- corSwap(corMat, var2, ncol(corMat) - 1)
+		}
+	upper <- corToAng(corMat)
+	lower <- corToAng(corMat)
+	upper[ncol(corMat), ncol(corMat)-1] <- 0 #set C[n, n-1] to 0 for maximum correlation
+	lower[ncol(corMat), ncol(corMat)-1] <- pi #set C[n, n-1] to pi for minimum correlation
+	return(c(angleToCor(lower)[ncol(corMat), ncol(corMat)-1],angleToCor(upper)[ncol(corMat), ncol(corMat)-1])) #convert new correlative angle matrices (upper and lower above) to correlation matrices, and return the value of C[n, n-1] which is now minimized and maximized.
+	}
+	if(identical(method, "greek"))
+	{
+		if(var1 == var2) #if elements are equal, their bounded correlation is 1
+			return(c(1, 1))
+		if(var1 == ncol(corMat)) #if var1 is in the last column, just move var2 to second to last
+			corMat <- corSwap(corMat, var2, ncol(corMat) - 1)
+		if(var2 == ncol(corMat)) #if var2 is in the last column, just move var1 to second to last
+			corMat <- corSwap(corMat, var1, ncol(corMat) - 1)
+		if(var2 != ncol(corMat) && var1 != ncol(corMat)) #if var1 and var2 are not in the last and second to last column, move them there
+		{
+			corMat <- corSwap(corMat, var1, ncol(corMat))
+			corMat <- corSwap(corMat, var2, ncol(corMat) - 1)
+		}
+		theta <- corToAng(corMat)
+		corr_alpha <- 1
+		corr_beta <- cos(theta[n, (n - 1)])
+		corr_gamma <- 1
+		for(k in 1:(n - 2))
+		{
+			corr_alpha <- corr_alpha * sin(theta[(n - 1), k])
+			corr_beta <- corr_beta * sin(theta[n, k])
+		}
+		for(k in 1:(n - 1))
+		{
+			corr_gamma <- corr_gamma * sin(theta[n, k])
+		}
+		lower <- corMat[n, (n - 1)] + (corr_alpha * (-1 * sqrt(corr_beta^2 + corr_gamma^2) - corr_beta))
+		upper <- corMat[n, (n - 1)] + (corr_alpha * (sqrt(corr_beta^2 + corr_gamma^2) - corr_beta))
+		return(c(lower, upper))
+	}
+}
+
+#' Swaps columns and rows i and j in a correlation matrix
+#' @param corMat A square correlation matrix
+#' @param i, j Column and row indices to swap
+#' @return The correlation matrix with swapped columns and rows
+corSwap <- function(corMat, i, j) {
+  if (i != j) {
+    # Swap columns
+    corMat[, c(i, j)] <- corMat[, c(j, i)]
+    # Swap rows using the same indices to ensure symmetry
+    corMat[c(i, j), ] <- corMat[c(j, i), ]
+  }
+  return(corMat)
+}
+
+angleToCor <- function(angMat) {
+  if (!isSquareMatrix(angMat)) stop("Matrix must be square!")
+  
+  b <- matrix(nrow = nrow(angMat), ncol = ncol(angMat))
+  for (i in seq_len(nrow(angMat))) {
+    b[i, ] <- sapply(seq_len(ncol(angMat)), function(j) bsolve(angMat, i, j))
+  }
+  return(b %*% t(b))
+}
+
+corSwap <- function(corMat, i, j) {
+  if (i != j) {
+    corMat[, c(i, j)] <- corMat[, c(j, i)]
+    corMat[c(i, j), ] <- corMat[c(j, i), ]
+  }
+  return(corMat)
+}
+
+corImpute <- function(corMat, method = "average", interval_prob = NA, interval = NA) {
+  if (!isSquareMatrix(corMat)) stop("Matrix must be square!")
+  if (countMiss(corMat) > 1) stop("Only 1 missing correlation currently supported!")
+  
+  bounds <- matSolve(corMat)
+  if (is.null(bounds)) return(corMat)  # No missing values found
+
+  position <- which(is.na(corMat), arr.ind = TRUE)
+  replacement <- switch(method,
+                        "average" = mean(bounds),
+                        "lbound" = bounds[1],
+                        "rbound" = bounds[2],
+                        "min" = ifelse(bounds[1]^2 > bounds[2]^2, bounds[2], bounds[1]),
+                        "max" = ifelse(bounds[1]^2 > bounds[2]^2, bounds[1], bounds[2]),
+                        "uniform" = runif(1, min = bounds[1], max = bounds[2]),
+                        "custom" = customBound(bounds, interval_prob, interval),
+                        stop("Invalid method specified!"))
+  corMat[position] <- replacement
+  return(corMat)
+}
+
+customBound <- function(bounds, interval_prob, interval) {
+  if (any(is.na(interval_prob), is.na(interval), length(interval_prob)*2 != length(interval), sum(interval_prob) != 1)) {
+    stop("Invalid custom interval specifications!")
+  }
+  interval_pick <- sample(seq_along(interval_prob), size = 1, prob = interval_prob)
+  bound_range <- bounds[1] + diff(bounds) * interval[c(interval_pick * 2 - 1, interval_pick * 2)]
+  runif(1, min = bound_range[1], max = bound_range[2])
+}
+
+isSquareMatrix <- function(mat) {
+  nrow(mat) == ncol(mat) && nrow(mat) > 1
+}
+
+countMiss <- function(corMat) {
+  sum(lower.tri(corMat, diag = TRUE) & is.na(corMat))
+}
+
+bsolve <- function(angMat, i, j) #implement NUMPACHAROEN algorithm
+{
+	if(nrow(angMat) != ncol(angMat))
+	{
+		stop("Matrix must be square!")
+	}
+	dimension = nrow(angMat)
+	if(i == 1 && j == 1)
+		return(1)
+	if(i >= 2 && j == 1)
+		return(cos(angMat[i,j]))
+	if(i == j && i >= 2 && j <= dimension)
+	{
+		answer <- 1
+		for(index in 1:(j - 1))
+		{
+			answer <- answer * sin(angMat[i,index])
+		}
+		return(answer)
+	}
+	if(j >= 2 && j <= (i - 1))
+	{
+		answer <- cos(angMat[i,j])
+		for(index in 1:(j - 1))
+		{
+			answer <- answer * sin(angMat[i,index])
+		}
+		return(answer)
+	}
+	if(j >= (i + 1) && j <= dimension)
+		return(0)
+}
+
+cholesky <- function(mat) #custom Cholesky-Crout algorithm to handle missing data
+{
+	x <- matrix(0, ncol = NCOL(mat), nrow = NROW(mat))
+	for(j in 1:ncol(mat))
+	{
+		for(i in j:nrow(mat))
+		{
+			if(j == i)
+			{
+				temp = 0
+				if((j - 1) != 0)
+				{
+					for(k in 1:(j - 1))
+					{
+						temp = temp + (x[j, k]^2)
+					}
+				}
+				x[i, j] = sqrt(mat[j, j] - temp)
+			}
+			else
+			{
+				temp = 0
+				if((j - 1) != 0)
+				{
+					for(k in 1:(j - 1))
+					{
+						temp = temp + (x[i, k] * x[j, k])
+					}
+				}
+				x[i, j] = (mat[i, j] - temp)/x[j, j]
+			}
+		}
+	}
+	x[is.nan(x)] <- 0
+	return(x)
+}
+
+thetaSolve <- function(bMat, i, j, partAng=NA) #solves for theta using logic on NUMPACHAROEN (2013) page 405, partial angle matrix can be provided to speed up computation (so code can access what it already has calculated previously instead of having to compute everything from the beginning column again)
+{
+  if(!is.matrix(partAng) || !is.data.frame(partAng))
+    partAng <- matrix(NA, ncol = NCOL(bMat), nrow = NROW(bMat))
+  if(nrow(bMat) != ncol(bMat))
+  {
+    stop("Matrix must be square!")
+  }
+  dimension = nrow(bMat)
+  if(j >= i)
+    return(0)
+  if(i >= 2 && j == 1)
+    return(acos(bMat[i, j]))
+  if(j >= 2 && j <= (i - 1))
+  {
+    sinprod <- 1
+    for(index in 1:(j - 1))
+    {
+      if(is.na(partAng[i, index]))
+        sinprod <- sinprod * sin(thetaSolve(bMat, i, index))
+      else
+        sinprod <- sinprod * sin(partAng[i, index])
+    }
+    if(is.na(sinprod))
+      return(NA)
+    if(sinprod == 0)
+      return(0)
+    else
+    {
+      if(is.na((bMat[i, j]/sinprod)))
+        return(NA)
+      if((bMat[i, j]/sinprod) > 1) #If product is out of the domain of acos, treat it as acos(1)
+        return(0)
+      if((bMat[i, j]/sinprod) < -1) #If product is out of the domain of acos, treat it as acos(-1)
+        return(pi)
+      else
+       return(acos(bMat[i, j]/sinprod))
+    }
+  }
+}
+
+#'Solves for the boundary of one missing correlation
+#'
+#'Automatically detects and returns the boundary of one missing correlation in a correlation matrix
+#'@param corMat A correlation matrix with one missing correlation
+#'@return A vector in which the first element is the minimum correlation and the second element is the maximum correlation
+#'@examples
+#'x <- matrix(c(1,.5,.5,0,.5,1,.5,.3,.5,.5,1,-.1,0,.3,-.1,1), nrow = 4, ncol = 4)
+#'x[4,3] <- NA
+#'x[3,4] <- NA
+#'matSolve(x)
+#'@export
+matSolve <- function(corMat) #automatically finds the boundaries of one missing entry in a correlative matrix
+{
+	if(countMiss(corMat) > 1)
+		stop("Correlation matrix has more than 1 missing entry!")
+	for(i in 1:nrow(corMat))
+	{
+		for(j in 1:i)
+		{
+			if(is.na(corMat[i,j]))
+			{
+				return(boundary(corMat, i, j))
+			}
+		}
+	}
+}
+
+triangle_to_cor_matrix <- function(triangle){
+  
+  library(tibble)
+  
+  # if input is a df or tibble, convert to matrix
+  if(is.data.frame(triangle) | is_tibble(triangle)){
+    triangle <- as.matrix(triangle)
+  } 
+  if(!is.matrix(triangle)){
+    stop("Input must be a matrix, data frame, or tibble")
+  }
+  
+  # assess if the triangle is an upper triangle. I.e., are all the lower tri values NA and all the upper tri values non-NA? If so, transpose the matrix to make it a lower triangle. 
+  if(all(is.na(triangle[lower.tri(triangle)])) &
+     all(!is.na(triangle[upper.tri(triangle)]))){
+    triangle <- t(triangle)
+  }
+  
+  # create an empty matrix of the same dimension as 'triangle' to hold the mirrored values
+  mirror_matrix <- matrix(0, nrow = nrow(triangle), ncol = ncol(triangle))
+  
+  # assign the lower triangle of 'mirror_matrix' with the lower triangle of 'triangle'
+  mirror_matrix[lower.tri(mirror_matrix)] <- triangle[lower.tri(triangle)]
+  
+  # add the transposed 'mirror_matrix' to itself to complete the mirroring process
+  full_matrix <- mirror_matrix + t(mirror_matrix) - diag(nrow(triangle))
+  
+  # fill diagonal with 1s
+  diag(full_matrix) <- 1
+  
+  return(full_matrix)
+}
+
+#' Correlation Matrix to Correlative Angle Matrix
+#'
+#' Transform a correlation matrix to its correlative angle matrix form
+#' @param corMat A matrix which contains the correlations between variables
+#' @return A correlative angle matrix corresponding to the input correlation matrix
+#' @examples
+#'x <- matrix(c(1,.5,.5,0,.5,1,.5,.3,.5,.5,1,-.1,0,.3,-.1,1), nrow = 4, ncol = 4)
+#'x[4,3] <- NA
+#'x[3,4] <- NA
+#'y <- corToAng(x)
+#'y[4,3] <- 0
+#'round(angleToCor(y), 2)
+#' @export
+corToAng <- function(corMat) #function to loop over a correlation matrix calling thetaSolve on each element to get the theta values for the correlative angle matrix
+{
+	if(nrow(corMat) != ncol(corMat))
+	{
+		stop("Matrix must be square!")
+	}
+	if(nrow(corMat) <= 1)
+	{
+		stop("Dimension must be greater than 1!")
+	}
+	angMat <- matrix(NA, nrow = nrow(corMat), ncol = ncol(corMat))
+	b <- cholesky(corMat)
+	for(j in 1:ncol(angMat))
+	{
+		for(i in 1:nrow(angMat))
+		{
+			angMat[i,j] <- thetaSolve(b, i, j, angMat)
+		}
+	}
+	return(angMat)
+}
+
+# data_test <- read_csv("test_data_correct.csv", show_col_types = FALSE) |>
+#   triangle_to_cor_matrix()
+# 
+# data_test_missing <- data_test 
+# 
+# data_test_missing[1,3] <- NA
+# data_test_missing[3,1] <- NA
+# 
+# data_test[1,3]
+# round(corImpute(data_test_missing, method = "average"), 2)[1,3]
+# round(corImpute(data_test_missing, method = "lbound"), 2)[1,3]
+# round(corImpute(data_test_missing, method = "rbound"), 2)[1,3]
+
+```
+
+## Addition for error checking
+
+```{r}
+
+library(dplyr)
+
+triangle_to_cor_matrix <- function(triangle){
+  
+  library(tibble)
+  
+  # if input is a df or tibble, convert to matrix
+  if(is.data.frame(triangle) | is_tibble(triangle)){
+    triangle <- as.matrix(triangle)
+  } 
+  if(!is.matrix(triangle)){
+    stop("Input must be a matrix, data frame, or tibble")
+  }
+  
+  # assess if the triangle is an upper triangle. I.e., are all the lower tri values NA and all the upper tri values non-NA? If so, transpose the matrix to make it a lower triangle. 
+  if(all(is.na(triangle[lower.tri(triangle)])) &
+     all(!is.na(triangle[upper.tri(triangle)]))){
+    triangle <- t(triangle)
+  }
+  
+  # create an empty matrix of the same dimension as 'triangle' to hold the mirrored values
+  mirror_matrix <- matrix(0, nrow = nrow(triangle), ncol = ncol(triangle))
+  
+  # assign the lower triangle of 'mirror_matrix' with the lower triangle of 'triangle'
+  mirror_matrix[lower.tri(mirror_matrix)] <- triangle[lower.tri(triangle)]
+  
+  # add the transposed 'mirror_matrix' to itself to complete the mirroring process
+  full_matrix <- mirror_matrix + t(mirror_matrix) - diag(nrow(triangle))
+  
+  # fill diagonal with 1s
+  diag(full_matrix) <- 1
+  
+  return(full_matrix)
+}
+
+positive_definite <- function(correlation_matrix){
+  all(eigen(correlation_matrix)$values > 0)
+}
+
+within_bounds <- function(correlation_matrix){
+  all(correlation_matrix <= +1) & all(correlation_matrix >= -1)
+}
+
+check_correlation_matrix <- function(data_matrix) {
+  require(stats)  # Ensure the stats package is loaded for rank function
+  
+  original_matrix <- data_matrix
+  imputed_matrix <- matrix(NA, nrow = nrow(data_matrix), ncol = ncol(data_matrix))
+  diff_matrix <- matrix(NA, nrow = nrow(data_matrix), ncol = ncol(data_matrix))
+  
+  # Function to impute a single element
+  singleImpute <- function(mat, row, col) {
+    mat[row, col] <- NA  # Introduce NA at the specified position
+    imputed_value <- corImpute(mat, method = "average")
+    return(imputed_value[row, col])
+  }
+  
+  # Perform imputation and calculate differences
+  for (i in 1:nrow(data_matrix)) {
+    for (j in 1:ncol(data_matrix)) {
+      suppressWarnings({
+        imputed_matrix[i, j] <- singleImpute(data_matrix, i, j)
+        diff_matrix[i, j] <- original_matrix[i, j] - imputed_matrix[i, j]
+      })
+    }
+  }
+  
+  # Format matrix with original and difference
+  formatted_matrix <- matrix("", nrow = nrow(data_matrix), ncol = ncol(data_matrix))
+  abs_diff <- abs(diff_matrix)
+  ranks <- matrix(rank(-abs_diff, ties.method = "min"), nrow = nrow(data_matrix))  # Ensure ranks is a matrix
+
+  for (i in 1:nrow(data_matrix)) {
+    for (j in 1:ncol(data_matrix)) {
+      stars <- ifelse(ranks[i, j] == 1, "***",
+                      ifelse(ranks[i, j] == 2, "**",
+                             ifelse(ranks[i, j] == 3, "*", "")))
+      #formatted_matrix[i, j] <- sprintf("%.2f [%.2f]%s", janitor::round_half_up(original_matrix[i, j], 2), janitor::round_half_up(diff_matrix[i, j], 2), stars)
+      formatted_matrix[i, j] <- sprintf("%.2f [%+.2f]%s", janitor::round_half_up(original_matrix[i, j], 2), janitor::round_half_up(diff_matrix[i, j], 2), stars)
+      #formatted_matrix[i, j] <- sprintf("%+.2f [%+.2f]%s", janitor::round_half_up(original_matrix[i, j], 2), janitor::round_half_up(diff_matrix[i, j], 2), stars)
+    }
+  }
+  
+  upper_tri_only <- function(mat){
+    diag(mat) <- NA
+    mat[upper.tri(mat)] <- NA
+    t(mat)
+  }
+  
+  original_matrix <- upper_tri_only(original_matrix)
+  imputed_matrix <- upper_tri_only(imputed_matrix)
+  diff_matrix <- upper_tri_only(diff_matrix)
+  formatted_matrix <- upper_tri_only(formatted_matrix)
+  
+  return(list(
+    original_matrix = original_matrix,
+    original_is_pd = positive_definite(triangle_to_cor_matrix(original_matrix)),
+    original_is_within_bounds = within_bounds(triangle_to_cor_matrix(original_matrix)),
+    imputed_matrix = imputed_matrix,
+    difference_matrix = diff_matrix,
+    formatted_results = formatted_matrix
+  ))
+}
+
+```
+
+### Example
+
+```{r}
+
+# load data
+data_df <- read_csv("test_data_correct.csv", show_col_types = FALSE) |>
+  janitor::clean_names()
+
+col_names <- colnames(data_df)
+
+data_test <- data_df |>
+  triangle_to_cor_matrix()
+
+#data_test
+#data_test[4,1]
+data_test_temp <- data_test
+data_test_temp[4, 1] <- 0.7
+data_test_temp[1, 4] <- 0.7
+
+
+# fit results
+res <- check_correlation_matrix(data_test_temp)
+
+
+# print results
+options(knitr.kable.NA = '')
+
+# res$original_matrix |>
+#   kable(caption = "Reported correlation matrix") |>
+#   kable_classic(full_width = FALSE)
+# 
+# res$imputed_matrix |> 
+#   janitor::round_half_up(2) |>
+#   kable(caption = "Imputed correlation matrix") |>
+#   kable_classic(full_width = FALSE)
+# 
+# res$difference_matrix |> 
+#   janitor::round_half_up(2) |>
+#   kable(caption = "Difference matrix") |>
+#   kable_classic(full_width = FALSE)
+
+res$original_is_pd
+
+res$original_is_within_bounds
+
+
+res$formatted_results |>
+  kable() |>
+  kable_classic(full_width = FALSE)
+
+# with column and row names
+res_for_printing <- res$formatted_results
+colnames(res_for_printing) <- col_names
+
+bind_cols(
+  data.frame("Var" = col_names),
+  as.data.frame(res_for_printing)
+) |>
+  #kable(caption = "Results") |>
+  kable() |>
+  kable_classic(full_width = FALSE)
+
+```
+
+
+
