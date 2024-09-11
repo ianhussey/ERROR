@@ -1,0 +1,13 @@
+name: meta_analysis_SE_errors_magnitude
+title: meta_analysis_SE_errors_magnitude
+username: errors
+account: errors
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 12668100
+bundleId: 9084706
+url: https://errors.shinyapps.io/meta_analysis_SE_errors_magnitude/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: app - correct-one-out.R|app - scree.R

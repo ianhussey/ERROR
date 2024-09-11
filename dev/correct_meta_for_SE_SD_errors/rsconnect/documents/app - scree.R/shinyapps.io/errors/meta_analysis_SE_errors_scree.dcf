@@ -1,0 +1,13 @@
+name: meta_analysis_SE_errors_scree
+title: meta_analysis_SE_errors_scree
+username: errors
+account: errors
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 12668359
+bundleId: 9084770
+url: https://errors.shinyapps.io/meta_analysis_SE_errors_scree/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: app - correct most extreme.R|app - correct-one-out.R

@@ -1,0 +1,13 @@
+name: meta_analysis_SE_errors_permuted
+title: meta_analysis_SE_errors_permuted
+username: errors
+account: errors
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 12668029
+bundleId: 9084755
+url: https://errors.shinyapps.io/meta_analysis_SE_errors_permuted/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: app - correct most extreme.R|app - scree.R

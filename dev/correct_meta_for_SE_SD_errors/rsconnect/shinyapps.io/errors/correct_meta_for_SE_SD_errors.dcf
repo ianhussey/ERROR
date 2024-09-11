@@ -1,0 +1,12 @@
+name: correct_meta_for_SE_SD_errors
+title: correct_meta_for_SE_SD_errors
+username: errors
+account: errors
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 12634890
+bundleId: 9072648
+url: https://errors.shinyapps.io/correct_meta_for_SE_SD_errors/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE
