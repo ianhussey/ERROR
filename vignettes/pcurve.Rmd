@@ -1,0 +1,54 @@
+---
+title: "p-curve"
+author: "Nathanael Larigaldie"
+output: 
+  rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{p-curve}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r include=FALSE}
+
+# formatting options
+# set default chunk options
+knitr::opts_chunk$set(message = FALSE, 
+                      warning = FALSE)
+
+# disable scientific notation
+options(scipen = 999) 
+
+```
+
+Data used here is "ThirdWave" from the dmetar package, and constructed as in “Doing Meta-Analysis with R: A Hands-On Guide” chapter 4.2.1. (a glimpse is shown). It could also be loaded from disk, e.g., from a correctly formatted .csv file (with the headers label, mean, sd, n, and items) to a tibble via readr::read_csv().
+
+```{r}
+
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+library(dmetar)
+library(meta)
+
+data(ThirdWave)
+glimpse(ThirdWave)
+
+m.gen <- metagen(TE = TE,
+                 seTE = seTE,
+                 studlab = Author,
+                 data = ThirdWave,
+                 sm = "SMD",
+                 fixed = FALSE,
+                 random = TRUE,
+                 method.tau = "REML",
+                 method.random.ci = "HK",
+                 title = "Third Wave Psychotherapies")
+
+```
+
+```{r fig.align = "center", fig.height = 6, fig.width = 7}
+
+# Run p-curve analysis
+pcurve(m.gen)
+```
