@@ -13,7 +13,7 @@ Install the package directly from GitHub, then view the vignettes in RStudio.
 1. Run the following code:
 
 ```R
-devtools::install_github("ianhussey/ERROR")
+devtools::install_github("ianhussey/ERROR", build_vignettes = TRUE)
 library(ERROR)
 ?ERROR
 ```
