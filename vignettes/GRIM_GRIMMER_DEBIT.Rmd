@@ -1,10 +1,10 @@
 ---
-title: "GRIM & GRIMMER"
-author: "Ian Hussey"
+title: "GRIM, GRIMMER & DEBIT"
+author: "Ian Hussey, Nathanael Larigaldie"
 output: 
   rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{GRIM & GRIMMER}
+  %\VignetteIndexEntry{GRIM, GRIMMER & DEBIT}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -44,7 +44,7 @@ Note that data is hard coded into the RMarkdown file. It could also be loaded fr
 # enter your data here. Here is some example data
 summary_statistics <- 
   tibble(
-    label = c("age group 1", "age group 2", "age group 2"),
+    label = c("age group 1", "age group 2", "age group 3"),
     mean  = c(31.09,         20.70,         31.92),
     sd    = c(6.03,          3.40,          4.83),
     n     = c(23,            23,            29),
@@ -85,4 +85,22 @@ grimmer_map(data = summary_statistics,
 
 ```
 
+# DEBIT
 
+```{r}
+# enter your data here. Here is some example data
+summary_statistics_binary <- 
+  tibble(
+    label = c("Example 1", "Example 2", "Example 3"),
+    mean  = c(0.5217391,   0.3478261,  0.3478261),
+    sd    = c(0.5107539,   0.4869848,  0.4869848),
+    n     = c(23,            23,       29))  |>
+  mutate(x = as.character(mean),
+         sd = as.character(sd))
+
+debit_map(summary_statistics_binary) |>
+  select(label, mean, sd, n, consistency) |>
+  # print table
+  knitr::kable() |>
+  kableExtra::kable_classic(full_width = FALSE)
+```
